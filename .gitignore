@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# 虚拟环境
+.venv/
+venv/
+
+# 构建产物
+build/
+dist/
+out/
+TaskReminder.spec
+TaskReminderSetup.spec
+
+# 本地测试临时目录
+.tmp_test/
+_e2e_inst/
+_inst_test/
+_inst_test2/
+_onefile_launch/
+
+# 逆向参考（旧版本 pyc 提取）
+TaskReminder.exe_extracted/
+
+# IDE / 工具
+.trae/
+.idea/
+.vscode/
+
+# 日志与临时文件
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
