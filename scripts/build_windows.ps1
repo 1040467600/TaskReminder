@@ -41,8 +41,10 @@ if (-not $SkipInstaller) {
     if (Test-Path $Zip) { Remove-Item $Zip -Force }
     Compress-Archive -Path (Join-Path $Root "dist\TaskReminder\*") -DestinationPath $Zip
 
-    # version file for the installer
-    $Ver = & $Py -c "from pathlib import Path; import re; m = re.search(r'__version__\s*=\s*''([^'']+)', Path(r'$Root\task_reminder\__init__.py').read_text(encoding='utf-8')); print(m.group(1) if m else '1.0.0')"
+    # version file for the installer（直接 import 取版本号，避免正则/引号问题）
+    $Ver = & $Py -c "import sys; sys.path.insert(0, r'$Root'); from task_reminder import __version__; print(__version__)"
+    if (-not $Ver) { $Ver = "0.0.0" }
+    Write-Host "installer version: $Ver" -ForegroundColor Yellow
     Set-Content -Path (Join-Path $Root "build\app_version.txt") -Value $Ver -NoNewline -Encoding Ascii
 
     Push-Location $Root
