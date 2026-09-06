@@ -5,8 +5,8 @@ import json
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
-from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QHBoxLayout,
-                             QHeaderView, QMenu, QMessageBox, QPushButton, QTableView,
+from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame, QHBoxLayout,
+                             QHeaderView, QLabel, QMenu, QMessageBox, QPushButton, QTableView,
                              QVBoxLayout, QWidget)
 
 from .. import app_config, excel_io, repository
@@ -18,6 +18,15 @@ from .widgets import (ACTION_DELETE, ACTION_EDIT, COLUMNS, ActionDelegate, Pagin
                       StatusDelegate)
 
 COL_STATE_KEY = "column_state"
+
+
+def _vsep() -> QFrame:
+    """工具栏分组竖线。"""
+    line = QFrame()
+    line.setObjectName("vsep")
+    line.setFrameShape(QFrame.Shape.VLine)
+    line.setFrameShadow(QFrame.Shadow.Plain)
+    return line
 
 
 class TasksPage(QWidget):
@@ -34,38 +43,60 @@ class TasksPage(QWidget):
 
     # ------------------------------------------------------------------
     def _build(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 10)
-        layout.setSpacing(8)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 14, 16, 12)
+        outer.setSpacing(10)
 
-        # 标题行 + 工具栏
+        # ===== 顶部卡片：工具栏 + 搜索 =====
+        top_card = QWidget()
+        top_card.setObjectName("card")
+        cv = QVBoxLayout(top_card)
+        cv.setContentsMargins(14, 12, 14, 12)
+        cv.setSpacing(10)
+
+        # 工具栏（按功能分组，竖线分隔）
         bar = QHBoxLayout()
-        title = QPushButton("新建任务")
-        title.setObjectName("btnPrimary")
+        bar.setSpacing(8)
+        self.btn_new = QPushButton("＋ 新建任务")
+        self.btn_new.setObjectName("btnPrimary")
+        self.btn_new.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_edit = QPushButton("编辑")
         self.btn_delete = QPushButton("删除")
         self.btn_delete.setObjectName("btnDanger")
         self.btn_export = QPushButton("导出 Excel")
         self.btn_import = QPushButton("导入 Excel")
-        self.btn_refresh = QPushButton("刷新")
         self.btn_columns = QPushButton("列设置")
-        title.clicked.connect(self.on_new)
+        self.btn_refresh = QPushButton("刷新")
+        self.btn_new.clicked.connect(self.on_new)
         self.btn_edit.clicked.connect(self.on_edit_selected)
         self.btn_delete.clicked.connect(self.on_delete_selected)
         self.btn_export.clicked.connect(self.on_export)
         self.btn_import.clicked.connect(self.on_import)
         self.btn_refresh.clicked.connect(self.refresh)
         self.btn_columns.clicked.connect(self._show_column_menu)
-        for b in (self.btn_edit, self.btn_delete, self.btn_export, self.btn_import,
-                  self.btn_columns, self.btn_refresh):
+        for b in (self.btn_new, self.btn_edit, self.btn_delete):
+            bar.addWidget(b)
+        bar.addWidget(_vsep())
+        for b in (self.btn_export, self.btn_import):
+            bar.addWidget(b)
+        bar.addWidget(_vsep())
+        for b in (self.btn_columns, self.btn_refresh):
             bar.addWidget(b)
         bar.addStretch(1)
-        layout.addLayout(bar)
+        cv.addLayout(bar)
 
         # 搜索
         self.search = SearchBar()
         self.search.changed.connect(self._on_search_changed)
-        layout.addWidget(self.search)
+        cv.addWidget(self.search)
+        outer.addWidget(top_card)
+
+        # ===== 表格卡片 =====
+        table_card = QWidget()
+        table_card.setObjectName("card")
+        tv = QVBoxLayout(table_card)
+        tv.setContentsMargins(10, 10, 10, 8)
+        tv.setSpacing(6)
 
         # 表格
         self.model = TaskTableModel(self)
@@ -93,39 +124,52 @@ class TasksPage(QWidget):
         self.view.customContextMenuRequested.connect(self._context_menu)
 
         # 委托
-        self.view.setItemDelegateForColumn(-1, None)
         self._status_delegate = StatusDelegate(self.view)
         self._action_delegate = ActionDelegate(self.view)
         self._action_delegate.action.connect(self._on_action)
-        layout.addWidget(self.view, 1)
+        self._rebind_delegates()
+        tv.addWidget(self.view, 1)
+
+        # 空数据提示（覆盖在表格视口上，不拦截鼠标）
+        self.empty_hint = QLabel("暂无任务\n点击左上角『＋ 新建任务』开始添加",
+                                 self.view.viewport())
+        self.empty_hint.setObjectName("emptyHint")
+        self.empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_hint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.view.viewport().installEventFilter(self)
 
         # 分页
         self.pager = PaginationBar()
         self.pager.page_changed.connect(self._on_page_changed)
         self.pager.page_size_changed.connect(self._on_page_size_changed)
-        layout.addWidget(self.pager)
+        tv.addWidget(self.pager)
+        outer.addWidget(table_card, 1)
+
+    def eventFilter(self, obj, event):
+        """表格视口尺寸变化时，让空状态提示始终铺满。"""
+        from PyQt6.QtCore import QEvent
+        if obj is self.view.viewport() and event.type() == QEvent.Type.Resize:
+            self.empty_hint.setGeometry(self.view.viewport().rect())
+        return super().eventFilter(obj, event)
 
     # ------------------------------------------------------------------
     # 状态持久化
     def _restore_states(self):
-        raw = app_config.get(COL_STATE_KEY, "")
-        if raw:
+        # 注意：app_config.get() 内部已做 json 解析，这里直接得到 list/dict，
+        # 切勿再次 json.loads（会抛 TypeError 被吞掉，导致委托不绑定/配置不恢复）。
+        state = app_config.get(COL_STATE_KEY, "")
+        if isinstance(state, list) and state:
             try:
-                state = json.loads(raw)
                 self._apply_column_state(state)
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError, KeyError, AttributeError):
+                self._reset_columns()
         else:
             self._reset_columns()   # 首次启动应用默认列配置
-        sort_raw = app_config.get("sort_state", "")
-        if sort_raw:
-            try:
-                s = json.loads(sort_raw)
-                self.sort_key = s.get("key", "created_at")
-                self.sort_dir = s.get("dir", "desc")
-                self._update_sort_indicator()
-            except (ValueError, TypeError):
-                pass
+        s = app_config.get("sort_state", "")
+        if isinstance(s, dict) and s:
+            self.sort_key = s.get("key", "created_at")
+            self.sort_dir = s.get("dir", "desc")
+            self._update_sort_indicator()
 
     def _save_states(self):
         state = self._column_state()
@@ -273,6 +317,11 @@ class TasksPage(QWidget):
         self.model.set_tasks(tasks)
         self.pager.update_info(total, self.page_no,
                                self.pager.size or int(app_config.get("page_size", 200)))
+        # 空数据提示
+        self.empty_hint.setVisible(total == 0)
+        if total == 0:
+            self.empty_hint.setGeometry(self.view.viewport().rect())
+            self.empty_hint.raise_()
 
     def _on_search_changed(self, _criteria):
         self.page_no = 1

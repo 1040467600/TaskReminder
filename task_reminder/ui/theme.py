@@ -9,7 +9,7 @@ QMainWindow, QDialog { background: #F5F7FA; }
 /* 侧边栏 */
 #sidebar { background: #1E293B; border: none; }
 #sidebar QLabel { color: #E2E8F0; background: transparent; }
-#appTitle { font-size: {FS_T}px; font-weight: 600; color: #FFFFFF; background: transparent; padding: 18px 8px 6px 8px; }
+#appTitle { font-size: {FS_T}px; font-weight: 600; color: #FFFFFF; background: transparent; padding: 2px 4px; }
 #appVersion { color: #94A3B8; font-size: {FS_S}px; padding: 8px; background: transparent; }
 QPushButton#navBtn {
     color: #CBD5E1; background: transparent; border: none; border-radius: 8px;
@@ -22,6 +22,8 @@ QPushButton#navBtn:checked { background: #2563EB; color: #FFFFFF; font-weight: 6
 #pageTitle { font-size: {FS_T}px; font-weight: 600; }
 #card { background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; }
 #card QLabel { background: transparent; }
+QFrame#vsep { background: #E2E8F0; border: none; max-width: 1px; min-width: 1px; margin: 2px 4px; }
+#emptyHint { background: transparent; color: #9CA3AF; font-size: {FS_T}px; }
 #cardTitle { color: #6B7280; font-size: {FS_S}px; }
 #cardValue { font-size: {FS_XT}px; font-weight: 700; }
 QLabel#cardValue[themeColor="blue"] { color: #2563EB; }
@@ -51,7 +53,26 @@ QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QComboBox:focus,
 QSpinBox:focus, QDateEdit:focus, QDateTimeEdit:focus { border-color: #2563EB; }
 QComboBox::drop-down { border: none; width: 22px; }
 QComboBox QAbstractItemView { background: #FFFFFF; border: 1px solid #E5E7EB; }
-QCheckBox, QRadioButton { background: transparent; spacing: 6px; }
+
+/* 复选框 / 单选钮指示器（必须显式定义 ::indicator，否则样式表命中后原生圆圈/方框不再绘制） */
+QCheckBox, QRadioButton { background: transparent; spacing: 8px; }
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 16px; height: 16px; background: #FFFFFF; border: 1.5px solid #9CA3AF;
+}
+QCheckBox::indicator { border-radius: 4px; }
+QRadioButton::indicator { border-radius: 9px; border-width: 2px; }
+QCheckBox::indicator:hover, QRadioButton::indicator:hover { border-color: #2563EB; }
+QCheckBox::indicator:checked {
+    background: #2563EB; border-color: #2563EB; image: url({CHECK_PNG});
+}
+QRadioButton::indicator:checked {
+    border-color: #2563EB;
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+        stop:0 #2563EB, stop:0.32 #2563EB, stop:0.46 #FFFFFF, stop:1 #FFFFFF);
+}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {
+    border-color: #D1D5DB; background: #F9FAFB;
+}
 
 /* 按钮 */
 QPushButton {
@@ -98,7 +119,7 @@ QMainWindow, QDialog { background: #0F172A; }
 
 #sidebar { background: #1E293B; border: none; }
 #sidebar QLabel { color: #E2E8F0; background: transparent; }
-#appTitle { font-size: {FS_T}px; font-weight: 600; color: #FFFFFF; background: transparent; padding: 18px 8px 6px 8px; }
+#appTitle { font-size: {FS_T}px; font-weight: 600; color: #FFFFFF; background: transparent; padding: 2px 4px; }
 #appVersion { color: #94A3B8; font-size: {FS_S}px; padding: 8px; background: transparent; }
 QPushButton#navBtn {
     color: #CBD5E1; background: transparent; border: none; border-radius: 8px;
@@ -110,6 +131,8 @@ QPushButton#navBtn:checked { background: #3B82F6; color: #FFFFFF; font-weight: 6
 #pageTitle { font-size: {FS_T}px; font-weight: 600; }
 #card { background: #1E293B; border: 1px solid #334155; border-radius: 10px; }
 #card QLabel { background: transparent; }
+QFrame#vsep { background: #334155; border: none; max-width: 1px; min-width: 1px; margin: 2px 4px; }
+#emptyHint { background: transparent; color: #64748B; font-size: {FS_T}px; }
 #cardTitle { color: #94A3B8; font-size: {FS_S}px; }
 #cardValue { font-size: {FS_XT}px; font-weight: 700; }
 QLabel#cardValue[themeColor="blue"] { color: #60A5FA; }
@@ -137,7 +160,26 @@ QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QComboBox:focus,
 QSpinBox:focus, QDateEdit:focus, QDateTimeEdit:focus { border-color: #3B82F6; }
 QComboBox::drop-down { border: none; width: 22px; }
 QComboBox QAbstractItemView { background: #1E293B; border: 1px solid #334155; color: #E2E8F0; }
-QCheckBox, QRadioButton { background: transparent; spacing: 6px; }
+
+/* 复选框 / 单选钮指示器 */
+QCheckBox, QRadioButton { background: transparent; spacing: 8px; }
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 16px; height: 16px; background: #16202F; border: 1.5px solid #4C5F7A;
+}
+QCheckBox::indicator { border-radius: 4px; }
+QRadioButton::indicator { border-radius: 9px; border-width: 2px; }
+QCheckBox::indicator:hover, QRadioButton::indicator:hover { border-color: #60A5FA; }
+QCheckBox::indicator:checked {
+    background: #2563EB; border-color: #2563EB; image: url({CHECK_PNG});
+}
+QRadioButton::indicator:checked {
+    border-color: #60A5FA;
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+        stop:0 #60A5FA, stop:0.32 #60A5FA, stop:0.46 #16202F, stop:1 #16202F);
+}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {
+    border-color: #3B4A5F; background: #1B2432;
+}
 
 QPushButton {
     background: #263244; border: 1px solid #3B4A5F; border-radius: 6px;
@@ -177,12 +219,15 @@ QListWidget::item:selected { background: #1E3A8A; color: #FFFFFF; }
 
 def theme_qss(theme: str = "light", font_size: int = 13) -> str:
     """生成当前主题的 QSS（按字号缩放派生字号）。"""
+    from .. import app_config
     tpl = _LIGHT if theme == "light" else _DARK
     fs = max(11, min(22, int(font_size)))
+    check_png = (app_config.assets_dir() / "check.png").as_posix()
     return tpl.replace("{FS}", str(fs)) \
               .replace("{FS_S}", str(fs - 2)) \
               .replace("{FS_T}", str(fs + 3)) \
-              .replace("{FS_XT}", str(fs + 8))
+              .replace("{FS_XT}", str(fs + 8)) \
+              .replace("{CHECK_PNG}", check_png)
 
 
 def apply_theme(app, theme: str = "light", font_size: int = 13) -> None:

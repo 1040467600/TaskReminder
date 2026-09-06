@@ -51,9 +51,20 @@ class MainWindow(QMainWindow):
         sv = QVBoxLayout(sidebar)
         sv.setContentsMargins(10, 0, 10, 10)
         sv.setSpacing(4)
+        # 标题行：应用图标 + 名称
+        head = QHBoxLayout()
+        head.setContentsMargins(4, 16, 0, 6)
+        head.setSpacing(8)
+        icon_lbl = QLabel()
+        pm = app_icon().pixmap(26, 26)
+        if not pm.isNull():
+            icon_lbl.setPixmap(pm)
         title = QLabel("任务提醒助手")
         title.setObjectName("appTitle")
-        sv.addWidget(title)
+        head.addWidget(icon_lbl)
+        head.addWidget(title)
+        head.addStretch(1)
+        sv.addLayout(head)
         self._nav_group = QButtonGroup(self)
         self._nav_group.setExclusive(True)
         self._nav_buttons = {}
@@ -137,6 +148,7 @@ class MainWindow(QMainWindow):
         self.service.task_due.connect(self._on_task_due)
         self.notifier.queue_changed.connect(self._update_next_status)
         self.tasks_page.data_changed.connect(self.dashboard_page.refresh)
+        self.tasks_page.data_changed.connect(self._update_next_status)
         self.settings_page.theme_changed.connect(self._apply_theme)
         self.service.start()
         QTimer.singleShot(0, self.notifier.pump)
@@ -159,7 +171,8 @@ class MainWindow(QMainWindow):
         theme.apply_theme(QApplication.instance(), theme_name, font_size)
 
     def _update_next_status(self):
-        self.status_db.setText(f"数据目录：{db.db_path()}")
+        _, total = repository.list_tasks(page=1, page_size=1)
+        self.status_db.setText(f"共 {total} 条任务")
         self.status_sort.setText(f"　排序：{self.tasks_page.current_sort_text()}")
         due_count = len(repository.due_for_reminder()) + self.notifier.pending_count()
         self.status_next.setText(f"轮询 {int(app_config.get('poll_interval', 5))}s　待处理提醒 {due_count}")

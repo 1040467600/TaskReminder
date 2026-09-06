@@ -33,6 +33,10 @@ def run() -> int:
     app.setOrganizationName("TaskReminder")
     app.setApplicationVersion(__version__)
 
+    # 窗口/任务栏图标（所有对话框继承）
+    from .notifier import app_icon
+    app.setWindowIcon(app_icon())
+
     another, server = _is_another_running()
     if another:
         QMessageBox.information(None, APP_NAME, "任务提醒助手已在运行中（请查看系统托盘）。")

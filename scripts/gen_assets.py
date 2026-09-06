@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 import math
+import shutil
 import struct
 import wave
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -128,7 +130,58 @@ def build_sounds():
     _write_wav(ASSETS / "alert.wav", alert)
 
 
+# ---------------------------------------------------------------------------
+# PNG 生成（复选框对勾，白色透明底）
+def _seg_dist(px: float, py: float, ax: float, ay: float,
+              bx: float, by: float) -> float:
+    """点 (px,py) 到线段 AB 的最短距离。"""
+    ab2 = (bx - ax) ** 2 + (by - ay) ** 2
+    if ab2 == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / ab2))
+    return math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay)))
+
+
+def _write_png(path: Path, size: int, pixels: bytes):
+    """pixels: size*size*4 RGBA。"""
+    raw = b"".join(b"\x00" + pixels[y * size * 4:(y + 1) * size * 4]
+                   for y in range(size))
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        c = tag + data
+        return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+           + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+    path.write_bytes(png)
+
+
+def build_check_png(path: Path, size: int = 32):
+    """白色对勾（透明底），用于 QSS 复选框选中态。"""
+    s = float(size)
+    # 对勾三段折线顶点（按 size 比例）
+    pts = [(0.22 * s, 0.52 * s), (0.42 * s, 0.72 * s), (0.78 * s, 0.28 * s)]
+    radius = s * 0.105          # 笔画半径
+    px = bytearray(size * size * 4)
+    for y in range(size):
+        for x in range(size):
+            d = min(_seg_dist(x + 0.5, y + 0.5, *pts[0], *pts[1]),
+                    _seg_dist(x + 0.5, y + 0.5, *pts[1], *pts[2]))
+            if d <= radius:
+                # 边缘抗锯齿
+                alpha = 255 if d <= radius - 1.2 else int(255 * max(0.0, (radius - d) / 1.2))
+                i = (y * size + x) * 4
+                px[i:i + 4] = bytes((255, 255, 255, alpha))
+    _write_png(path, size, bytes(px))
+    print(f"check png: {path} ({path.stat().st_size} bytes)")
+
+
 if __name__ == "__main__":
     build_icon(ROOT / "app.ico")
+    # 复制一份到 assets，供打包后窗口/托盘图标使用
+    ASSETS.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / "app.ico", ASSETS / "app.ico")
+    build_check_png(ASSETS / "check.png")
     build_sounds()
     print("assets generated.")

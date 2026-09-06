@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QGroupBox, QHBoxLayout,
                              QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
                              QSpinBox, QVBoxLayout, QWidget)
@@ -104,6 +105,10 @@ class SettingsPage(QWidget):
         row1.addWidget(btn_open_dir)
         row1.addStretch(1)
         v.addLayout(row1)
+        db_lbl = QLabel(f"数据库文件：{db.db_path()}")
+        db_lbl.setObjectName("tagNote")
+        db_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        v.addWidget(db_lbl)
         layout.addWidget(g_data)
 
         # 保存的搜索条件

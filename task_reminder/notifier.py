@@ -13,13 +13,17 @@ from . import app_config, db, repository
 from .models import Task, fmt, parse
 from .sound import SoundPlayer
 
-ICON_PATHS = ("app.ico", "task_reminder/assets/app.ico")
-
 
 def app_icon() -> QIcon:
-    for p in ICON_PATHS:
-        if Path(p).exists():
-            return QIcon(p)
+    """应用图标：开发态用根目录 app.ico，打包后用 assets/app.ico。"""
+    candidates = [
+        Path("app.ico"),
+        Path(__file__).resolve().parent.parent / "app.ico",
+        app_config.assets_dir() / "app.ico",
+    ]
+    for p in candidates:
+        if p.exists():
+            return QIcon(str(p))
     return QIcon()
 
 

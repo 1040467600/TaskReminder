@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
 
 from task_reminder import repository as repo
 from task_reminder.models import TaskStatus, fmt
@@ -95,6 +96,70 @@ class TestTasksPage:
         assert c["assignee"] == "张三"
         assert c["statuses"] == ["未开始"]
         assert c["deadline_from"] == "2026-09-01 00:00"
+
+    def test_new_task_button_visible_left_of_edit(self, qtbot):
+        """新建任务按钮必须显示，且位于编辑按钮左边。"""
+        from task_reminder.ui.tasks_page import TasksPage
+        page = TasksPage()
+        qtbot.addWidget(page)
+        page.show()
+        QApplication.processEvents()
+        assert page.btn_new.isVisibleTo(page)
+        assert "新建任务" in page.btn_new.text()
+        assert page.btn_new.geometry().x() < page.btn_edit.geometry().x()
+
+    def test_empty_hint_toggles(self, qtbot):
+        from task_reminder.ui.tasks_page import TasksPage
+        page = TasksPage()
+        qtbot.addWidget(page)
+        repo.delete_tasks([t.id for t in repo.all_tasks()])
+        page.refresh()
+        assert page.empty_hint.isVisibleTo(page.view.viewport())
+        mk()
+        page.refresh()
+        assert not page.empty_hint.isVisibleTo(page.view.viewport())
+
+
+    def test_saved_column_state_restores_delegates(self, qtbot):
+        """回归：保存过列配置后重新打开页面，状态徽章/操作列委托必须仍绑定
+        （app_config.get 已解析 JSON，重复 json.loads 会抛 TypeError 被吞）。"""
+        import json as _json
+        from task_reminder import app_config
+        from task_reminder.ui.tasks_page import TasksPage
+        from task_reminder.ui.widgets import StatusDelegate, ActionDelegate
+        mk()
+        # 模拟老用户已保存的列配置 + 排序状态
+        app_config.set("column_state", _json.dumps([
+            {"id": "name", "visible": True, "width": 260},
+            {"id": "assignee", "visible": True, "width": 100},
+            {"id": "deadline", "visible": True, "width": 150},
+            {"id": "reminder_time", "visible": True, "width": 150},
+            {"id": "status", "visible": True, "width": 96},
+            {"id": "notes", "visible": False, "width": 180},
+            {"id": "actions", "visible": True, "width": 132},
+        ], ensure_ascii=False))
+        app_config.set("sort_state", _json.dumps({"key": "deadline", "dir": "asc"}))
+        page = TasksPage()
+        qtbot.addWidget(page)
+        ids = page.model.column_ids
+        d_status = page.view.itemDelegateForColumn(ids.index("status"))
+        d_actions = page.view.itemDelegateForColumn(ids.index("actions"))
+        assert isinstance(d_status, StatusDelegate)
+        assert isinstance(d_actions, ActionDelegate)
+        assert page.sort_key == "deadline" and page.sort_dir == "asc"
+
+
+class TestThemeIndicators:
+    def test_radio_and_checkbox_indicators_styled(self):
+        """QSS 命中 QRadioButton/QCheckBox 时必须显式定义 ::indicator，
+        否则原生圆圈/方框不再绘制（导出范围对话框单选钮消失的回归点）。"""
+        from task_reminder.ui.theme import theme_qss
+        for theme in ("light", "dark"):
+            qss = theme_qss(theme)
+            assert "{CHECK_PNG}" not in qss
+            assert "QRadioButton::indicator:checked" in qss
+            assert "QCheckBox::indicator:checked" in qss
+            assert "check.png" in qss
 
 
 class TestTaskDialog:
