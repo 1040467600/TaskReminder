@@ -172,23 +172,23 @@ class TestModelMore:
 class TestTasksPageOps:
     def test_delete_selected_with_confirm(self, qtbot, monkeypatch):
         tid = mk()
+        from task_reminder.ui import tasks_page as tp
         from task_reminder.ui.tasks_page import TasksPage
         page = TasksPage()
         qtbot.addWidget(page)
         page.view.selectRow(0)
-        monkeypatch.setattr(QMessageBox, "question",
-                            staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+        monkeypatch.setattr(tp, "confirm", staticmethod(lambda *a, **k: True))
         page.on_delete_selected()
         assert repo.get_task(tid) is None
 
     def test_delete_cancelled(self, qtbot, monkeypatch):
         tid = mk()
+        from task_reminder.ui import tasks_page as tp
         from task_reminder.ui.tasks_page import TasksPage
         page = TasksPage()
         qtbot.addWidget(page)
         page.view.selectRow(0)
-        monkeypatch.setattr(QMessageBox, "question",
-                            staticmethod(lambda *a, **k: QMessageBox.StandardButton.No))
+        monkeypatch.setattr(tp, "confirm", staticmethod(lambda *a, **k: False))
         page.on_delete_selected()
         assert repo.get_task(tid) is not None
 
@@ -235,7 +235,7 @@ class TestTasksPageOps:
         from task_reminder.ui.tasks_page import TasksPage
         page = TasksPage()
         qtbot.addWidget(page)
-        page._set_status(page.model.task_at(0), "进行中")
+        page._set_status_multi([page.model.task_at(0)], "进行中")
         assert repo.get_task(tid).status == "进行中"
         page.refresh()
         # 取消编辑对话框不崩溃
@@ -305,19 +305,9 @@ class TestSettingsPage:
         assert page2.cmb_theme.currentData() == "dark"
         assert page2.spin_font.value() == 15
 
-    def test_saved_searches(self, qtbot):
-        from task_reminder import repository
-        from task_reminder.ui.settings_page import SettingsPage
-        repository.save_search("我的搜索", {"keyword": "x"})
-        page = SettingsPage()
-        qtbot.addWidget(page)
-        assert page.list_searches.count() == 1
-        page.list_searches.setCurrentRow(0)
-        page._del_search()
-        assert page.list_searches.count() == 0
-
     def test_backup_restore_dialogs(self, qtbot, monkeypatch, tmp_path):
         mk()
+        from task_reminder.ui import settings_page as sp
         from task_reminder.ui.settings_page import SettingsPage
         page = SettingsPage()
         qtbot.addWidget(page)
@@ -327,13 +317,20 @@ class TestSettingsPage:
         monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
         page._backup()
         assert out.exists()
-        # 恢复
+        # 恢复（确认弹窗直接放行）
+        monkeypatch.setattr(sp, "confirm", staticmethod(lambda *a, **k: True))
         repo.delete_tasks([t.id for t in repo.all_tasks()])
         monkeypatch.setattr(QFileDialog, "getOpenFileName",
                             staticmethod(lambda *a, **k: (str(out), "")))
         page._restore()
         assert len(repo.all_tasks()) == 1
+        # 恢复确认弹窗点取消 → 不导入
+        monkeypatch.setattr(sp, "confirm", staticmethod(lambda *a, **k: False))
+        repo.delete_tasks([t.id for t in repo.all_tasks()])
+        page._restore()
+        assert len(repo.all_tasks()) == 0
         # 无效文件恢复 → 警告不崩溃
+        monkeypatch.setattr(sp, "confirm", staticmethod(lambda *a, **k: True))
         bad = tmp_path / "bad.json"
         bad.write_text('{"format": "x"}', encoding="utf-8")
         monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: None))

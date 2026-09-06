@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import Qt, QTimer  # noqa: E402
+from PyQt6.QtCore import QDate, Qt, QTimer  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from task_reminder import db, repository as repo  # noqa: E402
@@ -124,11 +124,12 @@ def main() -> int:
     check("分页信息", "共 8 条" in page.pager.lbl_info.text())
 
     # 排序循环 asc → desc → 默认
-    page._on_header_clicked(2)   # 截止时间列
+    dl = page.model.column_ids.index("deadline")
+    page._on_header_clicked(dl)   # 截止时间列
     check("点击一次→升序", (page.sort_key, page.sort_dir) == ("deadline", "asc"))
-    page._on_header_clicked(2)
+    page._on_header_clicked(dl)
     check("再点→降序", (page.sort_key, page.sort_dir) == ("deadline", "desc"))
-    page._on_header_clicked(2)
+    page._on_header_clicked(dl)
     check("三击→默认", page.sort_key == "created_at" and page.sort_dir == "")
 
     # 分页回退：跳到超出页码后刷新
@@ -137,14 +138,16 @@ def main() -> int:
     check("超页自动回退（# 已有修复）", page.page_no == 1)
 
     # 列配置：拖拽 + 持久化 + 新实例恢复（#4）
+    # 插入内容列后视觉顺序：name, content, assignee, deadline, …
+    # 把名称列（视觉 0）拖到视觉 3 → content, assignee, deadline, name, …
     header = page.view.horizontalHeader()
     header.moveSection(0, 3)     # 把名称列拖到第 4 位
     app.processEvents()
     saved = page._column_state()
-    check("保存顺序反映拖拽", [s["id"] for s in saved][:4] == ["assignee", "deadline", "reminder_time", "name"])
+    check("保存顺序反映拖拽", [s["id"] for s in saved][:4] == ["content", "assignee", "deadline", "name"])
     page._save_states()
     page2 = TasksPage()
-    check("新实例恢复拖拽后的列顺序", page2.model.column_ids[:4] == ["assignee", "deadline", "reminder_time", "name"])
+    check("新实例恢复拖拽后的列顺序", page2.model.column_ids[:4] == ["content", "assignee", "deadline", "name"])
     page2._reset_columns()
     check("重置列配置", page2.model.column_ids[0] == "name")
 
@@ -154,13 +157,13 @@ def main() -> int:
         "SELECT value FROM user_settings WHERE key='page_size'").fetchone()[0]) == 50)
 
     # ================= 搜索栏 =================
-    print("\n===== 搜索：关键词 / 条件 / 保存的搜索 =====")
+    print("\n===== 搜索：名称/内容分离 / 日期开关 / 状态防呆 =====")
     sb = page.search
     sb.edit_keyword.setText("报告")
     sb._emit()
     app.processEvents()
     page.refresh()
-    check("关键词过滤", page.model.rowCount() == 1)
+    check("名称关键词过滤", page.model.rowCount() == 1)
     sb.reset()
     sb._debounce.stop()
     page.refresh()
@@ -172,13 +175,46 @@ def main() -> int:
     sb.reset()
     sb._debounce.stop()
 
-    repo.save_search("我的搜索", {"keyword": "任务"})
-    sb.reload_saved_searches()
-    check("保存的搜索进入下拉框", sb.cmb_saved.count() == 1)
-    sb._load_saved()
-    check("加载搜索自动展开高级面板（#7）", sb.btn_advanced.isChecked())
-    check("加载后条件生效", sb.criteria().get("keyword") == "任务")
+    # 名称/内容关键词分开（#1）
+    sb.edit_content_kw.setText("季度报告不存在的内容")
+    sb._emit()
+    page.refresh()
+    check("内容关键词独立过滤", page.model.rowCount() == 0)
+    check("筛选无结果提示区分（#）", "搜索条件" in page.empty_hint.text())
+    sb.reset()
+    sb._debounce.stop()
     check("重置按钮存在（#8）", hasattr(sb, "btn_reset") and sb.btn_reset.text() == "重置")
+    check("常用搜索已移除（#5）", not hasattr(sb, "cmb_saved") and not hasattr(sb, "btn_load"))
+
+    # 状态全取消自动勾回（防呆）
+    for cb in sb.chk_status.values():
+        cb.setChecked(False)
+    check("状态全取消自动勾回", all(cb.isChecked() for cb in sb.chk_status.values()))
+    app.processEvents()
+
+    # 日期范围开关：默认不限 → 启用可选 → 取消恢复不限（#4）
+    rng = sb._date_ranges["deadline"]
+    check("日期默认不限", "deadline_from" not in sb.criteria() and not rng["lo"].isEnabled())
+    rng["chk"].setChecked(True)
+    rng["lo"].setDate(QDate(datetime.now().year + 1, 1, 1))
+    check("启用后日期生效", sb.criteria().get("deadline_from", "").startswith(str(datetime.now().year + 1)))
+    rng["chk"].setChecked(False)
+    check("取消勾选恢复不限（#4）", "deadline_from" not in sb.criteria() and not rng["lo"].isEnabled())
+
+    # 收起高级面板时显示生效条件徽章（#）
+    sb.edit_assignee.setText("张三")
+    sb._debounce.stop()
+    sb.btn_advanced.setChecked(True)    # 先展开再收起，触发徽章刷新
+    app.processEvents()
+    sb.btn_advanced.setChecked(False)
+    check("收起显示筛选徽章", sb.btn_active.isVisibleTo(sb) and "1 项筛选" in sb.btn_active.text(),
+          f"visible={sb.btn_active.isVisibleTo(sb)} text={sb.btn_active.text()!r}")
+    sb.reset()
+    sb._debounce.stop()
+    check("重置后徽章消失", not sb.btn_active.isVisibleTo(sb))
+
+    # 内容列默认可见（#2）
+    check("内容列存在且默认显示", "content" in page.model.column_ids)
 
     # ================= 任务对话框 =================
     print("\n===== 任务对话框默认时间 =====")
@@ -228,11 +264,10 @@ def main() -> int:
     win.tasks_page.pager._set_size(100)                  # 任务页反向改
     check("任务页改后设置页同步（#5）", win.settings_page.cmb_page_size.currentData() == 100)
 
-    # 已保存搜索删除同步（#6）
-    win._switch_page(3)   # 设置页 → reload_searches
-    win.settings_page.list_searches.setCurrentRow(0)
-    win.settings_page._del_search()
-    check("设置页删除搜索后任务页同步", win.tasks_page.search.cmb_saved.count() == 0)
+    # 已保存搜索功能已移除（#5）：设置页不应再有管理控件
+    win._switch_page(3)
+    check("设置页无已保存搜索管理区", not hasattr(win.settings_page, "list_searches"))
+    check("搜索栏无常用搜索控件", not hasattr(win.tasks_page.search, "cmb_saved"))
 
     # 恢复备份 → 各页刷新（#1）
     n2 = repo.add_task("恢复测试", "赵六", "", "2026-09-20 12:00", "2026-09-20 09:00")
@@ -242,6 +277,14 @@ def main() -> int:
     # 看板与历史页
     win._switch_page(1)
     check("看板统计", win.dashboard_page.card_total.lbl_value.text() == str(repo.stats()["total"]))
+    # 看板卡片点击 → 跳任务页并应用筛选（#）
+    win.dashboard_page.card_overdue.clicked.emit("overdue")
+    app.processEvents()
+    check("卡片点击跳任务页", win.stack.currentIndex() == 0)
+    c = win.tasks_page.search.criteria()
+    check("卡片筛选已应用", "deadline_to" in c and c.get("statuses") == ["未开始", "进行中"])
+    win.tasks_page.search.reset()
+    win.tasks_page.search._debounce.stop()
     win._switch_page(2)
     check("历史页加载", "共" in win.history_page.lbl_info.text())
     win.history_page._turn(5)

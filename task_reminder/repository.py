@@ -31,8 +31,9 @@ class ValidationError(ValueError):
 
 
 def validate_task(name: str, assignee: str, content: str, deadline: str,
-                  reminder_time: str, *, task_id: Optional[int] = None) -> None:
-    from .models import NAME_MIN, NAME_MAX, CONTENT_MAX, plain_len
+                  reminder_time: str, *, task_id: Optional[int] = None,
+                  notes: str = "") -> None:
+    from .models import NAME_MIN, NAME_MAX, CONTENT_MAX, NOTES_MAX, plain_len
     name = (name or "").strip()
     assignee = (assignee or "").strip()
     if not (NAME_MIN <= len(name) <= NAME_MAX):
@@ -41,6 +42,8 @@ def validate_task(name: str, assignee: str, content: str, deadline: str,
         raise ValidationError(f"执行人姓名长度须在 {NAME_MIN}-{NAME_MAX} 字符之间")
     if plain_len(content) > CONTENT_MAX:
         raise ValidationError(f"任务内容最多 {CONTENT_MAX} 字符")
+    if len(notes or "") > NOTES_MAX:
+        raise ValidationError(f"备注最多 {NOTES_MAX} 字符")
     dl = parse(deadline)
     if not dl:
         raise ValidationError("截止时间无效")
@@ -55,14 +58,15 @@ def validate_task(name: str, assignee: str, content: str, deadline: str,
 # 任务 CRUD
 def add_task(name: str, assignee: str, content: str, deadline: str, reminder_time: str,
              status: str = TaskStatus.NOT_STARTED, notes: str = "") -> int:
-    validate_task(name, assignee, content, deadline, reminder_time)
+    validate_task(name, assignee, content, deadline, reminder_time, notes=notes)
     now = _now()
     with db.transaction() as c:
         cur = c.execute(
-            "INSERT INTO tasks(name, assignee, content, deadline, reminder_time, status, notes,"
-            " triggered, status_changed_at, created_at, updated_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (name.strip(), assignee.strip(), content, deadline, reminder_time, status, notes,
+            "INSERT INTO tasks(name, assignee, content, content_plain, deadline, reminder_time,"
+            " status, notes, triggered, status_changed_at, created_at, updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (name.strip(), assignee.strip(), content, html_to_plain(content), deadline,
+             reminder_time, status, notes,
              0, now if status != TaskStatus.NOT_STARTED else "", now, now),
         )
         return int(cur.lastrowid)
@@ -70,17 +74,17 @@ def add_task(name: str, assignee: str, content: str, deadline: str, reminder_tim
 
 def update_task(task_id: int, name: str, assignee: str, content: str, deadline: str,
                 reminder_time: str, status: str, notes: str) -> None:
-    validate_task(name, assignee, content, deadline, reminder_time)
+    validate_task(name, assignee, content, deadline, reminder_time, notes=notes)
     old = get_task(task_id)
     now = _now()
     status_changed = old is None or old.status != status
     sc_at = (old.status_changed_at or "") if (old and not status_changed) else (now if status_changed else "")
     with db.transaction() as c:
         c.execute(
-            "UPDATE tasks SET name=?, assignee=?, content=?, deadline=?, reminder_time=?,"
-            " status=?, notes=?, status_changed_at=?, updated_at=? WHERE id=?",
-            (name.strip(), assignee.strip(), content, deadline, reminder_time, status, notes,
-             sc_at, now, task_id),
+            "UPDATE tasks SET name=?, assignee=?, content=?, content_plain=?, deadline=?,"
+            " reminder_time=?, status=?, notes=?, status_changed_at=?, updated_at=? WHERE id=?",
+            (name.strip(), assignee.strip(), content, html_to_plain(content), deadline,
+             reminder_time, status, notes, sc_at, now, task_id),
         )
     # 状态改为已完成时清除未触发的提醒标记；从已完成改回未完成时，
     # 若提醒时间在未来则重新允许触发（否则 triggered 仍为 1，不会再提醒）
@@ -138,15 +142,27 @@ def find_duplicate(name: str, assignee: str, deadline: str) -> Optional[Task]:
 
 # ---------------------------------------------------------------------------
 # 查询/排序/分页
+def _terms(text: str) -> list[str]:
+    """按空白拆分为多个关键词（多词之间 AND）。"""
+    return [t for t in str(text).split() if t]
+
+
 def _criteria_sql(criteria: dict) -> tuple[str, list]:
     where, args = ["1=1"], []
     if criteria.get("assignee"):
         where.append("assignee = ?")
         args.append(criteria["assignee"].strip())
-    if criteria.get("keyword"):
-        kw = f"%{criteria['keyword'].strip()}%"
-        where.append("(name LIKE ? OR content LIKE ? OR notes LIKE ?)")
-        args += [kw, kw, kw]
+    # keyword：仅任务名称（快速搜索框）
+    for term in _terms(criteria.get("keyword", "")):
+        where.append("name LIKE ?")
+        args.append(f"%{term}%")
+    # content_kw：任务内容 + 备注（对纯文本列匹配，避免富文本 HTML 误报）
+    conds = []
+    for term in _terms(criteria.get("content_kw", "")):
+        conds.append("(content_plain LIKE ? OR notes LIKE ?)")
+        args += [f"%{term}%", f"%{term}%"]
+    if conds:
+        where.append(" AND ".join(conds))
     for col, key in (("created_at", "created"), ("deadline", "deadline"),
                      ("reminder_time", "reminder")):
         lo, hi = criteria.get(f"{key}_from"), criteria.get(f"{key}_to")
@@ -226,7 +242,7 @@ def mark_triggered(task_id: int, log_snapshot: bool = True) -> Optional[int]:
         cur = c.execute(
             "INSERT INTO reminder_history(task_id, triggered_at, assignee, content_snapshot,"
             " deadline) VALUES(?,?,?,?,?)",
-            (task.id, now, task.assignee, task.content_plain() or task.name, task.deadline),
+            (task.id, now, task.assignee, task.plain_text() or task.name, task.deadline),
         )
         return int(cur.lastrowid)
 
@@ -280,34 +296,14 @@ def clear_history() -> int:
 
 
 # ---------------------------------------------------------------------------
-# 保存的搜索条件
-def save_search(name: str, criteria: dict) -> int:
-    import json
-    with db.transaction() as c:
-        cur = c.execute(
-            "INSERT INTO saved_searches(name, criteria, created_at) VALUES(?,?,?)"
-            " ON CONFLICT(name) DO UPDATE SET criteria=excluded.criteria",
-            (name.strip(), json.dumps(criteria, ensure_ascii=False), _now()),
-        )
-        return int(cur.lastrowid)
-
-
-def list_searches() -> list[dict]:
-    import json
-    rows = db.get_conn().execute("SELECT * FROM saved_searches ORDER BY id").fetchall()
-    out = []
-    for r in rows:
-        try:
-            criteria = json.loads(r["criteria"])
-        except (ValueError, TypeError):
-            criteria = {}
-        out.append({"id": r["id"], "name": r["name"], "criteria": criteria})
-    return out
-
-
-def delete_search(search_id: int) -> None:
-    with db.transaction() as c:
-        c.execute("DELETE FROM saved_searches WHERE id=?", (search_id,))
+# 执行人（自动补全用）
+def list_assignees() -> list[str]:
+    """历史任务中出现过的执行人姓名（去重、按最近使用排序）。"""
+    rows = db.get_conn().execute(
+        "SELECT assignee, MAX(created_at) AS last FROM tasks"
+        " WHERE assignee != '' GROUP BY assignee ORDER BY last DESC LIMIT 50"
+    ).fetchall()
+    return [r["assignee"] for r in rows]
 
 
 # ---------------------------------------------------------------------------

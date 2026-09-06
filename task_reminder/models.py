@@ -12,6 +12,8 @@ TIME_FMT = "%Y-%m-%d %H:%M"
 NAME_MIN, NAME_MAX = 1, 50
 # 任务内容纯文本最大长度
 CONTENT_MAX = 5000
+# 备注最大长度（字符）
+NOTES_MAX = 200
 
 
 class TaskStatus:
@@ -78,6 +80,7 @@ class Task:
     name: str = ""
     assignee: str = ""
     content: str = ""          # 富文本 HTML
+    content_plain: str = ""    # 内容纯文本（搜索/显示用，落库冗余列）
     deadline: str = ""         # YYYY-MM-DD HH:MM
     reminder_time: str = ""    # YYYY-MM-DD HH:MM
     status: str = TaskStatus.NOT_STARTED
@@ -87,14 +90,15 @@ class Task:
     created_at: str = ""
     updated_at: str = ""
 
-    def content_plain(self) -> str:
-        return html_to_plain(self.content)
+    def plain_text(self) -> str:
+        """内容纯文本：优先落库的 content_plain 列，缺失时从富文本现算。"""
+        return self.content_plain or html_to_plain(self.content)
 
     def summary(self, limit: int = 40) -> str:
         """任务名称/摘要列显示文本：优先名称，否则内容摘要。"""
         text = (self.name or "").strip()
         if not text:
-            text = self.content_plain().replace("\n", " ")
+            text = self.plain_text().replace("\n", " ")
         return text[:limit] + ("…" if len(text) > limit else "")
 
     def is_overdue(self, now: Optional[datetime] = None) -> bool:

@@ -5,8 +5,8 @@ from datetime import datetime
 
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
-from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QMenu, QPushButton, QStyledItemDelegate,
-                             QToolButton, QWidget)
+from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QMenu, QPushButton, QSpinBox,
+                             QStyledItemDelegate, QToolButton, QWidget)
 
 from ..models import Task, TaskStatus
 
@@ -19,7 +19,8 @@ STATUS_COLORS = {
 
 # 列定义：(id, 标题, 默认可见, 默认宽度)
 COLUMNS = [
-    ("name", "任务名称/摘要", True, 260),
+    ("name", "任务名称", True, 220),
+    ("content", "任务内容", True, 280),
     ("assignee", "执行人", True, 100),
     ("deadline", "截止时间", True, 150),
     ("reminder_time", "提醒时间", True, 150),
@@ -29,6 +30,20 @@ COLUMNS = [
 ]
 
 ACTION_EDIT, ACTION_DELETE = "edit", "delete"
+
+
+def confirm(parent, title: str, text: str) -> bool:
+    """中文按钮确认弹窗（Qt 默认 Yes/No 在中文界面下不友好）。"""
+    from PyQt6.QtWidgets import QMessageBox
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Question)
+    box.setWindowTitle(title)
+    box.setText(text)
+    btn_ok = box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(btn_ok)
+    box.exec()
+    return box.clickedButton() is btn_ok
 
 
 class StatusDelegate(QStyledItemDelegate):
@@ -112,7 +127,7 @@ def deadline_foreground(task: Task) -> QColor | None:
 
 
 class PaginationBar(QWidget):
-    """分页栏：首页/上一页/页码信息/下一页/末页 + 每页条数。"""
+    """分页栏：首页/上一页/页码信息/下一页/末页 + 跳页 + 每页条数。"""
 
     page_changed = pyqtSignal(int)          # 当前页
     page_size_changed = pyqtSignal(int)
@@ -139,6 +154,14 @@ class PaginationBar(QWidget):
         layout.addWidget(self.btn_prev)
         layout.addStretch(1)
         layout.addWidget(self.lbl_info)
+        layout.addWidget(QLabel("跳至"))
+        self.spin_page = QSpinBox()
+        self.spin_page.setRange(1, 1)
+        self.spin_page.setMaximumWidth(70)
+        self.spin_page.setToolTip("输入页码后按回车跳转")
+        self.spin_page.editingFinished.connect(self._on_jump)
+        layout.addWidget(self.spin_page)
+        layout.addWidget(QLabel("页"))
         layout.addStretch(1)
         layout.addWidget(self.btn_next)
         layout.addWidget(self.btn_last)
@@ -154,6 +177,9 @@ class PaginationBar(QWidget):
         self.cmb_size.setText(f"每页 {n}")
         self.page_size_changed.emit(n)
 
+    def _on_jump(self):
+        self._go(self.spin_page.value())
+
     def _go(self, p: int):
         pages = max(1, (self.total + self.size - 1) // self.size)
         p = max(1, min(p, pages))
@@ -165,6 +191,10 @@ class PaginationBar(QWidget):
         self.total, self.page, self.size = total, page, size
         pages = max(1, (total + size - 1) // size)
         self.lbl_info.setText(f"共 {total} 条　第 {page}/{pages} 页")
+        self.spin_page.blockSignals(True)
+        self.spin_page.setRange(1, pages)
+        self.spin_page.setValue(page)
+        self.spin_page.blockSignals(False)
         self.cmb_size.setText(f"每页 {size}")
         self.btn_first.setEnabled(page > 1)
         self.btn_prev.setEnabled(page > 1)

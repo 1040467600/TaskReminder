@@ -4,12 +4,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from PyQt6.QtCore import QDateTime, Qt
-from PyQt6.QtWidgets import (QComboBox, QDateTimeEdit, QHBoxLayout, QLabel, QMessageBox,
+from PyQt6.QtWidgets import (QComboBox, QDateTimeEdit, QHBoxLayout, QLabel,
                              QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
                              QWidget)
 
 from .. import repository
 from ..models import parse
+from .widgets import confirm
 
 QUICK = {"全部": None, "今天": 0, "近7天": 7, "近30天": 30}
 
@@ -77,14 +78,17 @@ class HistoryPage(QWidget):
         self.btn_query.clicked.connect(self._on_query)
         self.btn_clear.clicked.connect(self._on_clear)
         self.cmb_quick.currentIndexChanged.connect(self._on_quick)
+        # 手动改时间：锁定自动范围并立即生效（与快捷下拉行为一致）
         self.dt_from.dateTimeChanged.connect(self._on_manual_range)
         self.dt_to.dateTimeChanged.connect(self._on_manual_range)
         self.btn_prev.clicked.connect(lambda: self._turn(-1))
         self.btn_next.clicked.connect(lambda: self._turn(1))
 
     def _on_manual_range(self):
-        """用户手动修改时间范围后，refresh 不再自动覆盖。"""
+        """用户手动修改时间范围后：不再自动覆盖，并立即刷新。"""
         self._auto_range = False
+        self.page_no = 1
+        self.refresh()
 
     def _apply_auto_range(self):
         """按快捷范围自动计算起止时间（结束时间始终跟随当前时刻，
@@ -131,6 +135,7 @@ class HistoryPage(QWidget):
                      lg.deadline, lg.response_text(), lg.responded_at]
             for col, text in enumerate(cells):
                 item = QTableWidgetItem(text)
+                item.setToolTip(text)   # 截断列可悬停看全文
                 if col == 4:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     if lg.response == "done":
@@ -145,8 +150,8 @@ class HistoryPage(QWidget):
         self.btn_next.setEnabled(self.page_no < pages)
 
     def _on_clear(self):
-        if QMessageBox.question(self, "清空提醒历史", "确定清空全部提醒历史吗？此操作不可恢复。",
-                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                                ) == QMessageBox.StandardButton.Yes:
-            repository.clear_history()
-            self.refresh()
+        if not confirm(self, "清空提醒历史",
+                       "确定清空全部提醒历史吗？\n此操作不可恢复，建议先在设置页备份。"):
+            return
+        repository.clear_history()
+        self.refresh()

@@ -1,16 +1,13 @@
-"""设置页：外观 / 提醒 / 数据管理 / 保存的搜索条件管理。"""
+"""设置页：外观 / 提醒 / 行为 / 数据管理。"""
 from __future__ import annotations
-
-import json
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QGroupBox, QHBoxLayout,
-                             QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
-                             QSpinBox, QVBoxLayout, QWidget)
+                             QLabel, QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget)
 
 from .. import app_config, backup, db
-from .. import repository
 from .theme import apply_theme
+from .widgets import confirm
 
 THEME_NAMES = {"light": "浅色主题", "dark": "深色主题"}
 
@@ -19,7 +16,6 @@ class SettingsPage(QWidget):
     theme_changed = pyqtSignal(str, int)
     behavior_changed = pyqtSignal()
     data_restored = pyqtSignal()
-    searches_changed = pyqtSignal()      # 已保存搜索被删除 → 同步搜索栏下拉框
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -114,20 +110,6 @@ class SettingsPage(QWidget):
         v.addWidget(db_lbl)
         layout.addWidget(g_data)
 
-        # 保存的搜索条件
-        g_search = QGroupBox("已保存的搜索条件")
-        v2 = QVBoxLayout(g_search)
-        self.list_searches = QListWidget()
-        v2.addWidget(self.list_searches)
-        row2 = QHBoxLayout()
-        btn_del_search = QPushButton("删除所选")
-        btn_del_search.setObjectName("btnRow")
-        btn_del_search.clicked.connect(self._del_search)
-        row2.addWidget(btn_del_search)
-        row2.addStretch(1)
-        v2.addLayout(row2)
-        layout.addWidget(g_search)
-
         layout.addStretch(1)
 
     def _connect(self):
@@ -154,7 +136,6 @@ class SettingsPage(QWidget):
         if sound_file:
             self.cmb_sound.addItem(f"自定义：{sound_file}", sound_file)
             self.cmb_sound.setCurrentIndex(self.cmb_sound.count() - 1)
-        self.reload_searches()
 
     def _save(self):
         app_config.set("poll_interval", self.spin_interval.value())
@@ -170,24 +151,6 @@ class SettingsPage(QWidget):
         app_config.set("theme", theme)
         app_config.set("font_size", font)
         self.theme_changed.emit(theme, font)
-
-    def reload_searches(self):
-        self.list_searches.clear()
-        for item in repository.list_searches():
-            QListWidgetItem(item["name"], self.list_searches)
-
-    def _del_search(self):
-        row = self.list_searches.currentRow()
-        if row < 0:
-            return
-        item = self.list_searches.item(row)
-        for s in repository.list_searches():
-            if s["name"] == item.text():
-                repository.delete_search(s["id"])
-                break
-        self.reload_searches()
-        # 通知任务页搜索栏同步刷新下拉框
-        self.searches_changed.emit()
 
     def _pick_sound(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择音效文件", "",
@@ -228,6 +191,10 @@ class SettingsPage(QWidget):
     def _restore(self):
         path, _ = QFileDialog.getOpenFileName(self, "恢复数据", "", "JSON (*.json)")
         if not path:
+            return
+        if not confirm(self, "恢复数据",
+                       "恢复将按编号覆盖现有任务与提醒历史中相同编号的记录。\n"
+                       "建议先执行一次备份，确定要继续吗？"):
             return
         try:
             n_tasks, n_hist = backup.import_json(path)

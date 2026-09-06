@@ -65,6 +65,11 @@ class TaskTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.DisplayRole:
             if cid == "name":
                 return task.summary()
+            if cid == "content":
+                # 内容纯文本截断显示（备注也算内容的一部分）
+                text = task.plain_text() or task.notes or ""
+                text = text.replace("\n", " ")
+                return text[:80] + ("…" if len(text) > 80 else "")
             if cid == "assignee":
                 return task.assignee
             if cid == "deadline":
@@ -76,10 +81,16 @@ class TaskTableModel(QAbstractTableModel):
             if cid == "notes":
                 return task.notes or ""
         if role == Qt.ItemDataRole.ToolTipRole:
+            from ..notifier import remaining_text
             tip = f"【{task.summary()}】\n执行人：{task.assignee}\n截止：{task.deadline}\n提醒：{task.reminder_time}"
-            plain = task.content_plain()
+            plain = task.plain_text()
             if plain:
-                tip += f"\n内容：{plain[:200]}"
+                tip += f"\n内容：{plain[:300]}"
+            if task.notes:
+                tip += f"\n备注：{task.notes[:100]}"
+            rem = remaining_text(task.deadline)
+            if rem:
+                tip += f"\n{rem}"
             return tip
         if role == Qt.ItemDataRole.ForegroundRole and cid in ("deadline", "reminder_time"):
             fg = deadline_foreground(task)

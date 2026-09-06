@@ -29,7 +29,7 @@ class TestModel:
         m.set_tasks(repo.all_tasks())
         assert m.rowCount() == 1
         assert m.columnCount() == len(COLUMNS)
-        assert m.headerData(0, Qt.Orientation.Horizontal) == "任务名称/摘要"
+        assert m.headerData(0, Qt.Orientation.Horizontal) == "任务名称"
         assert m.task_at(0).id == tid
 
     def test_summary_fallback_to_content(self, qtbot):
@@ -38,6 +38,17 @@ class TestModel:
         m = TaskTableModel()
         m.set_tasks(repo.all_tasks())
         assert m.data(m.index(0, 0)) == "完整任务名称"
+
+    def test_content_column_displayed(self, qtbot):
+        """任务表新增内容列：默认可见并显示纯文本摘要。"""
+        from task_reminder.ui.task_table_model import TaskTableModel
+        repo.add_task("内容列任务", "张三", "这是正文内容",
+                      "2026-09-10 10:00", "2026-09-09 09:00")
+        m = TaskTableModel()
+        m.set_tasks(repo.all_tasks())
+        idx = m.column_ids.index("content")
+        assert m.headerData(idx, Qt.Orientation.Horizontal) == "任务内容"
+        assert "正文内容" in m.data(m.index(0, idx))
 
 
 class TestTasksPage:
@@ -60,15 +71,16 @@ class TestTasksPage:
         from task_reminder.ui.tasks_page import TasksPage
         page = TasksPage()
         qtbot.addWidget(page)
-        page._on_header_clicked(2)      # 截止时间列 → 升序
+        dl = page.model.column_ids.index("deadline")
+        page._on_header_clicked(dl)     # 截止时间列 → 升序
         assert page.sort_dir == "asc"
         idx = page.model.column_ids.index("deadline")
         header = page.view.horizontalHeader()
         assert header.sortIndicatorSection() == idx
         assert header.isSortIndicatorShown()
-        page._on_header_clicked(2)      # → 降序
+        page._on_header_clicked(dl)     # → 降序
         assert page.sort_dir == "desc"
-        page._on_header_clicked(2)      # → 默认
+        page._on_header_clicked(dl)     # → 默认
         assert page.sort_dir == ""
         assert header.sortIndicatorSection() == -1
         assert "默认" in page.current_sort_text()
@@ -98,6 +110,45 @@ class TestTasksPage:
         assert c["assignee"] == "张三"
         assert c["statuses"] == ["未开始"]
         assert c["deadline_from"] == "2026-09-01 00:00"
+
+    def test_search_bar_status_auto_recheck(self, qtbot):
+        """状态三个全取消 → 自动勾回全部（避免'全取消=显示全部'的歧义）。"""
+        from task_reminder.ui.search_bar import SearchBar
+        bar = SearchBar()
+        qtbot.addWidget(bar)
+        for cb in bar.chk_status.values():
+            cb.setChecked(False)
+        assert all(cb.isChecked() for cb in bar.chk_status.values())
+        assert "statuses" not in bar.criteria()
+
+    def test_search_bar_date_ranges_toggleable(self, qtbot):
+        """日期范围：未启用=不限，启用可选日期，取消即恢复不限。"""
+        from task_reminder.ui.search_bar import SearchBar
+        from PyQt6.QtCore import QDate
+        bar = SearchBar()
+        qtbot.addWidget(bar)
+        rng = bar._date_ranges["deadline"]
+        assert "deadline_from" not in bar.criteria()
+        assert not rng["lo"].isEnabled()
+        rng["chk"].setChecked(True)
+        assert rng["lo"].isEnabled() and rng["hi"].isEnabled()
+        rng["lo"].setDate(QDate(2026, 9, 1))
+        c = bar.criteria()
+        assert c.get("deadline_from") == "2026-09-01 00:00"
+        rng["chk"].setChecked(False)
+        assert "deadline_from" not in bar.criteria()
+        assert not rng["lo"].isEnabled()
+
+    def test_search_bar_name_and_content_split(self, qtbot):
+        """名称与内容关键词分开发送为不同条件。"""
+        from task_reminder.ui.search_bar import SearchBar
+        bar = SearchBar()
+        qtbot.addWidget(bar)
+        bar.edit_keyword.setText("报告")
+        bar.edit_content_kw.setText("季度 诈骗")
+        c = bar.criteria()
+        assert c["keyword"] == "报告"
+        assert c["content_kw"] == "季度 诈骗"
 
     def test_new_task_button_visible_left_of_edit(self, qtbot):
         """新建任务按钮必须显示，且位于编辑按钮左边。"""
@@ -242,9 +293,10 @@ class TestTaskDialog:
         assert dlg.task_id is not None
         t = repo.get_task(dlg.task_id)
         assert t.name == "对话框创建任务"
-        assert t.content_plain() == "正文内容"
+        assert t.plain_text() == "正文内容"
 
-    def test_reminder_after_deadline_rejected(self, qtbot):
+    def test_reminder_later_than_deadline_auto_linkage(self, qtbot):
+        """提醒晚于截止时自动联动：截止后移 1 小时，校验通过（用户不可能造出非法组合）。"""
         from task_reminder.ui.task_dialog import TaskDialog
         from PyQt6.QtCore import QDateTime
         dlg = TaskDialog()
@@ -253,7 +305,9 @@ class TestTaskDialog:
         dlg.edit_assignee.setText("张三")
         dlg.dt_deadline.setDateTime(QDateTime(2026, 9, 9, 9, 0))
         dlg.dt_reminder.setDateTime(QDateTime(2026, 9, 10, 10, 0))
-        assert dlg._validate() == "提醒时间必须早于截止时间"
+        # 截止被自动调整为 提醒 + 1 小时
+        assert dlg.dt_deadline.dateTime() == QDateTime(2026, 9, 10, 11, 0)
+        assert dlg._validate() is None
 
 
 class TestMainWindow:

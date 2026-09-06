@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PyQt6.QtCore import QRect, Qt
+from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QListWidget,
                              QListWidgetItem, QVBoxLayout, QWidget)
@@ -14,9 +14,14 @@ from .widgets import STATUS_COLORS
 
 
 class StatCard(QFrame):
-    def __init__(self, title: str, color_key: str, parent=None):
+    clicked = pyqtSignal(str)      # 卡片 key
+
+    def __init__(self, title: str, color_key: str, key: str = "", parent=None):
         super().__init__(parent)
+        self.key = key
         self.setObjectName("card")
+        self.setToolTip("点击查看对应任务")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         v = QVBoxLayout(self)
         v.setContentsMargins(16, 12, 16, 12)
         self.lbl_title = QLabel(title)
@@ -29,6 +34,10 @@ class StatCard(QFrame):
 
     def set_value(self, n: int):
         self.lbl_value.setText(str(n))
+
+    def mousePressEvent(self, ev):
+        self.clicked.emit(self.key)
+        super().mousePressEvent(ev)
 
 
 class BarChart(QWidget):
@@ -79,15 +88,15 @@ class DashboardPage(QWidget):
         title.setObjectName("pageTitle")
         layout.addWidget(title)
 
-        # 统计卡片
+        # 统计卡片（点击可跳转到任务页并应用对应筛选）
         cards = QHBoxLayout()
         cards.setSpacing(10)
-        self.card_total = StatCard("任务总数", "blue")
-        self.card_notstarted = StatCard("未开始", "gray")
-        self.card_inprogress = StatCard("进行中", "amber")
-        self.card_done = StatCard("已完成", "green")
-        self.card_overdue = StatCard("已过期", "red")
-        self.card_week = StatCard("7 天内到期", "blue")
+        self.card_total = StatCard("任务总数", "blue", key="total")
+        self.card_notstarted = StatCard("未开始", "gray", key="notstarted")
+        self.card_inprogress = StatCard("进行中", "amber", key="inprogress")
+        self.card_done = StatCard("已完成", "green", key="done")
+        self.card_overdue = StatCard("已过期", "red", key="overdue")
+        self.card_week = StatCard("7 天内到期", "blue", key="week")
         for c in (self.card_total, self.card_notstarted, self.card_inprogress,
                   self.card_done, self.card_overdue, self.card_week):
             cards.addWidget(c, 1)

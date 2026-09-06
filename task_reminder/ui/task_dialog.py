@@ -3,14 +3,15 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QDateTime, Qt
 from PyQt6.QtGui import QFont, QTextCharFormat
-from PyQt6.QtWidgets import (QComboBox, QDateTimeEdit, QDialog, QFormLayout, QHBoxLayout,
-                             QLabel, QLineEdit, QMessageBox, QPushButton, QPlainTextEdit,
-                             QTextEdit, QVBoxLayout)
+from PyQt6.QtWidgets import (QComboBox, QCompleter, QDateTimeEdit, QDialog, QFormLayout,
+                             QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox,
+                             QPlainTextEdit, QPushButton, QTextEdit, QToolButton,
+                             QVBoxLayout, QWidget)
 
 from .. import repository
-from ..models import CONTENT_MAX, NAME_MAX, NAME_MIN, Task, TaskStatus, plain_len
+from ..models import CONTENT_MAX, NAME_MAX, NAME_MIN, NOTES_MAX, Task, TaskStatus, plain_len
 
 
 class TaskDialog(QDialog):
@@ -35,10 +36,16 @@ class TaskDialog(QDialog):
         self.edit_name.setPlaceholderText("1-50 个字符")
         form.addRow("任务名称：", self.edit_name)
 
-        # 执行人
+        # 执行人（历史人员自动补全）
         self.edit_assignee = QLineEdit()
         self.edit_assignee.setMaxLength(NAME_MAX)
         self.edit_assignee.setPlaceholderText("1-50 个字符")
+        names = repository.list_assignees()
+        if names:
+            completer = QCompleter(names, self)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            self.edit_assignee.setCompleter(completer)
         form.addRow("执行人：", self.edit_assignee)
 
         # 富文本内容
@@ -52,6 +59,9 @@ class TaskDialog(QDialog):
             b.setCheckable(True)
             b.setObjectName("btnRow")
             b.setMaximumWidth(34)
+        self.btn_bold.setToolTip("加粗（Ctrl+B）")
+        self.btn_italic.setToolTip("斜体（Ctrl+I）")
+        self.btn_underline.setToolTip("下划线（Ctrl+U）")
         self.btn_clear_fmt.setObjectName("btnRow")
         self.btn_bold.clicked.connect(lambda: self._fmt(bold=self.btn_bold.isChecked()))
         self.btn_italic.clicked.connect(lambda: self._fmt(italic=self.btn_italic.isChecked()))
@@ -76,16 +86,18 @@ class TaskDialog(QDialog):
         content_box.addWidget(self.edit_content)
         form.addRow("任务内容：", content_box)
 
-        # 时间
+        # 时间（快捷预设 + 自动联动：始终保证提醒早于截止）
         self.dt_deadline = QDateTimeEdit()
         self.dt_deadline.setCalendarPopup(True)
         self.dt_deadline.setDisplayFormat("yyyy-MM-dd HH:mm")
-        form.addRow("截止时间：", self.dt_deadline)
+        self.dt_deadline.dateTimeChanged.connect(self._on_deadline_changed)
+        form.addRow("截止时间：", self._time_row(self.dt_deadline, deadline=True))
 
         self.dt_reminder = QDateTimeEdit()
         self.dt_reminder.setCalendarPopup(True)
         self.dt_reminder.setDisplayFormat("yyyy-MM-dd HH:mm")
-        form.addRow("提醒时间：", self.dt_reminder)
+        self.dt_reminder.dateTimeChanged.connect(self._on_reminder_changed)
+        form.addRow("提醒时间：", self._time_row(self.dt_reminder, deadline=False))
 
         # 状态与备注
         self.cmb_status = QComboBox()
@@ -94,8 +106,16 @@ class TaskDialog(QDialog):
 
         self.edit_notes = QPlainTextEdit()
         self.edit_notes.setMaximumHeight(64)
-        self.edit_notes.setPlaceholderText("备注（可选）")
-        form.addRow("备注：", self.edit_notes)
+        self.edit_notes.setPlaceholderText(f"备注（可选，最多 {NOTES_MAX} 字）")
+        self.edit_notes.textChanged.connect(self._on_notes_changed)
+        notes_box = QVBoxLayout()
+        notes_box.setSpacing(2)
+        notes_box.addWidget(self.edit_notes)
+        self.lbl_notes = QLabel("0 / " + str(NOTES_MAX))
+        self.lbl_notes.setObjectName("tagNote")
+        self.lbl_notes.setAlignment(Qt.AlignmentFlag.AlignRight)
+        notes_box.addWidget(self.lbl_notes)
+        form.addRow("备注：", notes_box)
 
         layout.addLayout(form)
 
@@ -136,11 +156,79 @@ class TaskDialog(QDialog):
         self.dt_deadline.setDateTime(deadline)
         self.dt_reminder.setDateTime(reminder)
 
+    # ------------------------------------------------------------------
+    # 时间快捷预设与联动
+    def _time_row(self, edit: QDateTimeEdit, deadline: bool) -> QWidget:
+        """时间输入框 + '快捷 ▾' 预设菜单。"""
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(6)
+        btn = QToolButton()
+        btn.setText("快捷 ▾")
+        btn.setObjectName("btnRow")
+        btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu = QMenu(btn)
+        now = datetime.now().replace(second=0, microsecond=0)
+        if deadline:
+            next_mon = (now + timedelta(days=7 - now.weekday())).replace(hour=9, minute=0)
+            presets = [
+                ("今天 18:00", now.replace(hour=18, minute=0)),
+                ("明天 09:00", (now + timedelta(days=1)).replace(hour=9, minute=0)),
+                ("明天 18:00", (now + timedelta(days=1)).replace(hour=18, minute=0)),
+                ("3 天后此刻", now + timedelta(days=3)),
+                ("7 天后此刻", now + timedelta(days=7)),
+                ("下周一 09:00", next_mon),
+            ]
+        else:
+            presets = [
+                ("30 分钟后", now + timedelta(minutes=30)),
+                ("1 小时后", now + timedelta(hours=1)),
+                ("明天 09:00", (now + timedelta(days=1)).replace(hour=9, minute=0)),
+                ("截止前 1 小时", None),
+            ]
+        for text, dt in presets:
+            menu.addAction(text, lambda dt=dt: self._apply_preset(edit, deadline, dt))
+        btn.setMenu(menu)
+        h.addWidget(edit, 1)
+        h.addWidget(btn)
+        return row
+
+    def _apply_preset(self, edit: QDateTimeEdit, deadline: bool, dt: datetime | None):
+        if dt is None:   # 截止前 1 小时
+            base = self.dt_deadline.dateTime().toPyDateTime() - timedelta(hours=1)
+            dt = max(base, datetime.now().replace(second=0, microsecond=0))
+        edit.setDateTime(QDateTime(dt))
+
+    def _on_deadline_changed(self, dt: QDateTime):
+        # 截止被改到不晚于提醒 → 提醒自动前移 1 小时，保持"提醒早于截止"
+        if dt <= self.dt_reminder.dateTime():
+            self.dt_reminder.blockSignals(True)
+            self.dt_reminder.setDateTime(dt.addSecs(-3600))
+            self.dt_reminder.blockSignals(False)
+
+    def _on_reminder_changed(self, dt: QDateTime):
+        # 提醒被改到不早于截止 → 截止自动后移 1 小时
+        if dt >= self.dt_deadline.dateTime():
+            self.dt_deadline.blockSignals(True)
+            self.dt_deadline.setDateTime(dt.addSecs(3600))
+            self.dt_deadline.blockSignals(False)
+
+    # ------------------------------------------------------------------
+    def _on_notes_changed(self):
+        text = self.edit_notes.toPlainText()
+        if len(text) > NOTES_MAX:
+            pos = self.edit_notes.textCursor().position()
+            self.edit_notes.setPlainText(text[:NOTES_MAX])
+            cursor = self.edit_notes.textCursor()
+            cursor.setPosition(min(pos, NOTES_MAX))
+            self.edit_notes.setTextCursor(cursor)
+        self.lbl_notes.setText(f"{min(len(text), NOTES_MAX)} / {NOTES_MAX}")
+
     def _load(self, t: Task):
         self.edit_name.setText(t.name)
         self.edit_assignee.setText(t.assignee)
         self.edit_content.setHtml(t.content or "")
-        from PyQt6.QtCore import QDateTime
         self.dt_deadline.setDateTime(QDateTime.fromString(t.deadline, "yyyy-MM-dd HH:mm"))
         self.dt_reminder.setDateTime(QDateTime.fromString(t.reminder_time, "yyyy-MM-dd HH:mm"))
         self.cmb_status.setCurrentText(t.status)
@@ -211,6 +299,8 @@ class TaskDialog(QDialog):
             err = f"执行人姓名至少 {NAME_MIN} 个字符"
         elif plain_len(self.edit_content.toHtml()) > CONTENT_MAX:
             err = f"任务内容最多 {CONTENT_MAX} 字"
+        elif len(self.edit_notes.toPlainText()) > NOTES_MAX:
+            err = f"备注最多 {NOTES_MAX} 字"
         else:
             dl, rt = self.dt_deadline.dateTime(), self.dt_reminder.dateTime()
             if rt >= dl:

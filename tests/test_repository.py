@@ -62,7 +62,7 @@ class TestCrud:
         assert t.name == "编写季度报告"
         assert t.status == TaskStatus.NOT_STARTED
         assert t.status_changed_at == ""  # 初始未开始不记时间戳
-        assert t.content_plain() == "重要事项"
+        assert t.plain_text() == "重要事项"
 
     def test_update_and_status_timestamp(self):
         tid = mk()
@@ -132,10 +132,36 @@ class TestQuery:
     def test_search_keyword_in_content_and_name(self):
         mk(name="数据库迁移任务", content="升级 <i>PostgreSQL</i>")
         mk(name="前端重构任务", content="改造报表页面")
+        # keyword 只搜任务名称
         rows, total = repo.list_tasks(criteria={"keyword": "数据库"})
         assert total == 1
         rows, total = repo.list_tasks(criteria={"keyword": "报表"})
+        assert total == 0
+        # content_kw 搜内容（含富文本转纯文本）与备注
+        rows, total = repo.list_tasks(criteria={"content_kw": "报表"})
         assert total == 1
+        rows, total = repo.list_tasks(criteria={"content_kw": "PostgreSQL"})
+        assert total == 1
+
+    def test_search_multi_term_and_html_false_positive(self):
+        mk(name="季度报告", content="包含 <b>季度</b> 数据")
+        # 多词 AND：两个词都命中才返回
+        rows, total = repo.list_tasks(criteria={"keyword": "季度 报告"})
+        assert total == 1
+        rows, total = repo.list_tasks(criteria={"keyword": "季度 不存在"})
+        assert total == 0
+        # 富文本标签不应误报：搜 HTML 标签名不会命中内容
+        rows, total = repo.list_tasks(criteria={"content_kw": "<b>"})
+        assert total == 0
+        # 跨标签文字可被搜到（content_plain 已剥掉标签）
+        rows, total = repo.list_tasks(criteria={"content_kw": "季度"})
+        assert total == 1
+
+    def test_search_notes_by_content_kw(self):
+        mk(name="无备注任务")
+        mk(name="带备注任务", notes="电话已联系")
+        rows, total = repo.list_tasks(criteria={"content_kw": "电话"})
+        assert total == 1 and rows[0].name == "带备注任务"
 
     def test_search_deadline_range(self):
         mk(deadline="2026-09-10 10:00")
@@ -203,16 +229,15 @@ class TestReminder:
         assert repo.get_task(tid2).triggered == 1
 
 
-# ---------------------------------------------------------------- 保存搜索 / 统计 / 冲突
+# ---------------------------------------------------------------- 执行人 / 统计 / 冲突
 class TestMisc:
-    def test_saved_searches(self):
-        repo.save_search("本周截止", {"deadline_from": "2026-09-08 00:00"})
-        repo.save_search("本周截止", {"deadline_from": "2026-09-09 00:00"})  # 覆盖
-        items = repo.list_searches()
-        assert len(items) == 1 and items[0]["criteria"]["deadline_from"] == "2026-09-09 00:00"
-        repo.save_search("我的任务", {"assignee": "张三"})
-        repo.delete_search(items[0]["id"])
-        assert len(repo.list_searches()) == 1
+    def test_list_assignees(self):
+        mk(assignee="张三")
+        mk(assignee="李四")
+        mk(assignee="张三")
+        names = repo.list_assignees()
+        assert "张三" in names and "李四" in names
+        assert len(names) == len(set(names))
 
     def test_stats_and_upcoming(self):
         mk(status=TaskStatus.IN_PROGRESS)

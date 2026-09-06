@@ -91,11 +91,11 @@ class TestImport:
 
         r1 = excel_io.import_tasks(path, strategy="skip")
         assert r1.skipped == 1 and r1.updated == 0
-        assert repo.get_task(t.id).content_plain() != "覆盖后的内容"
+        assert repo.get_task(t.id).plain_text() != "覆盖后的内容"
 
         r2 = excel_io.import_tasks(path, strategy="overwrite")
         assert r2.updated == 1 and r2.skipped == 0
-        assert repo.get_task(t.id).content_plain() == "覆盖后的内容"
+        assert repo.get_task(t.id).plain_text() == "覆盖后的内容"
 
     def test_excel_datetime_cells(self, tmp_path):
         dt = datetime(2026, 9, 15, 8, 30)

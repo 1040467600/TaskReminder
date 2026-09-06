@@ -72,6 +72,7 @@ def ensure_schema(c: sqlite3.Connection) -> None:
             name TEXT NOT NULL DEFAULT '',
             assignee TEXT NOT NULL DEFAULT '',
             content TEXT NOT NULL DEFAULT '',
+            content_plain TEXT NOT NULL DEFAULT '',
             deadline TEXT NOT NULL DEFAULT '',
             reminder_time TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT '未开始',
@@ -96,12 +97,6 @@ def ensure_schema(c: sqlite3.Connection) -> None:
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL DEFAULT ''
         );
-        CREATE TABLE IF NOT EXISTS saved_searches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            criteria TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL DEFAULT ''
-        );
         """
     )
     # v1.0 → v2.0 迁移：增量列
@@ -110,6 +105,10 @@ def ensure_schema(c: sqlite3.Connection) -> None:
         cur.execute("ALTER TABLE tasks ADD COLUMN name TEXT NOT NULL DEFAULT ''")
     if "status_changed_at" not in task_cols:
         cur.execute("ALTER TABLE tasks ADD COLUMN status_changed_at TEXT NOT NULL DEFAULT ''")
+    # v2.0.3 → v2.1 迁移：内容纯文本列（搜索/显示用），并回填存量数据
+    if "content_plain" not in task_cols:
+        cur.execute("ALTER TABLE tasks ADD COLUMN content_plain TEXT NOT NULL DEFAULT ''")
+    _backfill_content_plain(cur)
     hist_cols = {r[1] for r in cur.execute("PRAGMA table_info(reminder_history)")}
     if "response" not in hist_cols:
         cur.execute("ALTER TABLE reminder_history ADD COLUMN response TEXT NOT NULL DEFAULT ''")
@@ -133,3 +132,14 @@ def ensure_schema(c: sqlite3.Connection) -> None:
 
 def db_path() -> str:
     return _db_path
+
+
+def _backfill_content_plain(cur: sqlite3.Cursor) -> None:
+    """为存量任务回填 content_plain（内容纯文本），只处理缺失的行。"""
+    from .models import html_to_plain
+    rows = cur.execute(
+        "SELECT id, content FROM tasks WHERE content_plain='' AND content!=''"
+    ).fetchall()
+    for r in rows:
+        cur.execute("UPDATE tasks SET content_plain=? WHERE id=?",
+                    (html_to_plain(r["content"]), r["id"]))

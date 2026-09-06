@@ -1,8 +1,10 @@
 """主窗口：侧边栏导航（任务管理 / 数据看板 / 提醒历史 / 设置）+ 托盘。"""
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (QApplication, QLabel, QMainWindow, QMenu, QStackedWidget,
                              QSystemTrayIcon, QVBoxLayout, QWidget, QPushButton,
                              QButtonGroup, QHBoxLayout, QFrame)
@@ -116,9 +118,6 @@ class MainWindow(QMainWindow):
         elif key == "tasks":
             self.tasks_page.refresh()
             self.status_sort.setText(f"　排序：{self.tasks_page.current_sort_text()}")
-        elif key == "settings":
-            # 设置页的已保存搜索列表与任务页搜索栏保持同步
-            self.settings_page.reload_searches()
 
     # ------------------------------------------------------------------
     def _build_tray(self):
@@ -162,8 +161,13 @@ class MainWindow(QMainWindow):
         self.settings_page.behavior_changed.connect(self._on_behavior_changed)
         # 恢复备份后立即刷新所有页面
         self.settings_page.data_restored.connect(self._on_data_restored)
-        # 设置页删除已保存搜索 → 同步任务页搜索栏下拉框
-        self.settings_page.searches_changed.connect(self.tasks_page.search.reload_saved_searches)
+        # 看板卡片点击 → 跳到任务页并应用对应筛选
+        for card in (self.dashboard_page.card_total, self.dashboard_page.card_notstarted,
+                     self.dashboard_page.card_inprogress, self.dashboard_page.card_done,
+                     self.dashboard_page.card_overdue, self.dashboard_page.card_week):
+            card.clicked.connect(self._on_card_clicked)
+        # 全局快捷键
+        self._setup_shortcuts()
         self.service.start()
         QTimer.singleShot(0, self.notifier.pump)
 
@@ -201,6 +205,48 @@ class MainWindow(QMainWindow):
         self.dashboard_page.refresh()
         self.history_page.refresh()
         self._update_next_status()
+
+    # ------------------------------------------------------------------
+    # 看板卡片 → 任务页筛选
+    def _on_card_clicked(self, key: str):
+        now = datetime.now()
+        open_states = ["未开始", "进行中"]
+        mapping = {
+            "total": {},
+            "notstarted": {"statuses": ["未开始"]},
+            "inprogress": {"statuses": ["进行中"]},
+            "done": {"statuses": ["已完成"]},
+            "overdue": {"deadline_to": now.strftime("%Y-%m-%d %H:%M"),
+                        "statuses": open_states},
+            "week": {"deadline_from": now.strftime("%Y-%m-%d %H:%M"),
+                     "deadline_to": (now + timedelta(days=7)).strftime("%Y-%m-%d %H:%M"),
+                     "statuses": open_states},
+        }
+        self._jump_to_tasks(mapping.get(key, {}))
+
+    def _jump_to_tasks(self, criteria: dict):
+        self._nav_buttons["tasks"].setChecked(True)
+        self.stack.setCurrentIndex(0)
+        self.tasks_page.search.set_criteria(criteria)
+        self.tasks_page.refresh()
+        self.status_sort.setText(f"　排序：{self.tasks_page.current_sort_text()}")
+
+    # ------------------------------------------------------------------
+    def _setup_shortcuts(self):
+        sc_new = QShortcut(QKeySequence("Ctrl+N"), self)
+        sc_new.activated.connect(self.tasks_page.on_new)
+        sc_find = QShortcut(QKeySequence("Ctrl+F"), self)
+        sc_find.activated.connect(self._focus_search)
+        # Delete 仅在任务表格获得焦点时触发，避免其他页面误删
+        sc_del = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.tasks_page.view)
+        sc_del.setContext(Qt.ShortcutContext.WidgetShortcut)
+        sc_del.activated.connect(self.tasks_page.on_delete_selected)
+
+    def _focus_search(self):
+        self._nav_buttons["tasks"].setChecked(True)
+        self.stack.setCurrentIndex(0)
+        self.tasks_page.search.edit_keyword.setFocus()
+        self.tasks_page.search.edit_keyword.selectAll()
 
     def _sync_settings_page_size(self, n: int):
         """任务页分页菜单改每页条数后，让设置页下拉框同步显示。"""

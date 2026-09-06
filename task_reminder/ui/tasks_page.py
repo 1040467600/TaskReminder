@@ -15,7 +15,7 @@ from .search_bar import SearchBar
 from .task_dialog import TaskDialog
 from .task_table_model import TaskTableModel
 from .widgets import (ACTION_DELETE, ACTION_EDIT, COLUMNS, ActionDelegate, PaginationBar,
-                      StatusDelegate)
+                      StatusDelegate, confirm)
 
 COL_STATE_KEY = "column_state"
 
@@ -335,11 +335,17 @@ class TasksPage(QWidget):
                 sort_dir=self.sort_dir or "desc", criteria=criteria)
         self.model.set_tasks(tasks)
         self.pager.update_info(total, self.page_no, size)
-        # 空数据提示
-        self.empty_hint.setVisible(total == 0)
+        # 空数据提示：区分"确实没有任务"与"筛选后无结果"
         if total == 0:
+            if self.search.criteria():
+                self.empty_hint.setText("没有符合当前搜索条件的任务\n点击搜索区『重置』清除条件")
+            else:
+                self.empty_hint.setText("暂无任务\n点击左上角『＋ 新建任务』开始添加")
+            self.empty_hint.setVisible(True)
             self.empty_hint.setGeometry(self.view.viewport().rect())
             self.empty_hint.raise_()
+        else:
+            self.empty_hint.setVisible(False)
 
     def sync_page_size(self, n: int):
         """设置页修改每页条数后立即生效。"""
@@ -389,9 +395,7 @@ class TasksPage(QWidget):
         ids = [self.model.task_at(r.row()).id for r in rows if self.model.task_at(r.row())]
         if not ids:
             return
-        if QMessageBox.question(self, "删除确认", f"确定删除选中的 {len(ids)} 个任务吗？删除后不可恢复。",
-                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                                ) != QMessageBox.StandardButton.Yes:
+        if not confirm(self, "删除确认", f"确定删除选中的 {len(ids)} 个任务吗？删除后不可恢复。"):
             return
         repository.delete_tasks(ids)
         self.refresh()
@@ -402,10 +406,7 @@ class TasksPage(QWidget):
             self._edit(repository.get_task(task_id))
         elif action == ACTION_DELETE:
             task = repository.get_task(task_id)
-            if task and QMessageBox.question(
-                    self, "删除确认", f"确定删除任务「{task.summary()}」吗？",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    ) == QMessageBox.StandardButton.Yes:
+            if task and confirm(self, "删除确认", f"确定删除任务「{task.summary()}」吗？"):
                 repository.delete_task(task_id)
                 self.refresh()
                 self.data_changed.emit()
@@ -417,15 +418,24 @@ class TasksPage(QWidget):
         menu.addAction("删除", self.on_delete_selected)
         idx = self.view.indexAt(pos)
         if idx.isValid():
-            task = self.model.task_at(idx.row())
-            if task:
-                status_menu = menu.addMenu("设为")
+            # 作用于选中集（未选中时即右键所在的单条任务）
+            selected = [self.model.task_at(r.row())
+                        for r in self.view.selectionModel().selectedRows()]
+            tasks = [t for t in selected if t]
+            if not tasks:
+                task = self.model.task_at(idx.row())
+                tasks = [task] if task else []
+            if tasks:
+                title = f"设为状态（{len(tasks)} 条）" if len(tasks) > 1 else "设为"
+                status_menu = menu.addMenu(title)
                 for s in ("未开始", "进行中", "已完成"):
-                    status_menu.addAction(s, lambda s=s, t=task: self._set_status(t, s))
+                    status_menu.addAction(s, lambda s=s, ts=tasks: self._set_status_multi(ts, s))
         menu.exec(self.view.viewport().mapToGlobal(pos))
 
-    def _set_status(self, task: Task, status: str):
-        repository.set_status(task.id, status)
+    def _set_status_multi(self, tasks: list[Task], status: str):
+        for t in tasks:
+            if t and t.id:
+                repository.set_status(t.id, status)
         self.refresh()
         self.data_changed.emit()
 

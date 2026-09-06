@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QObject, pyqtSignal
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel, QPushButton,
+from PyQt6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel, QMenu, QPushButton,
                              QSystemTrayIcon, QTextBrowser, QVBoxLayout)
 
 from . import app_config, db, repository
@@ -66,16 +66,22 @@ class ReminderDialog(QDialog):
         layout.addWidget(info)
 
         body = QTextBrowser()
-        body.setPlainText((task.content_plain() or task.notes or "（无详细内容）")[:2000])
+        body.setPlainText((task.plain_text() or task.notes or "（无详细内容）")[:2000])
         layout.addWidget(body, 1)
 
         btns = QHBoxLayout()
-        btn_snooze = QPushButton("稍后提醒(5分钟)")
+        btn_snooze = QPushButton("稍后提醒")
         btn_done = QPushButton("标记完成")
         btn_close = QPushButton("关闭")
         btn_snooze.setObjectName("btnPrimary")
         btn_done.setObjectName("btnSuccess")
-        btn_snooze.clicked.connect(lambda: self._respond("snooze"))
+        snooze_menu = QMenu(btn_snooze)
+        for minutes in (5, 10, 30, 60):
+            snooze_menu.addAction(
+                f"{minutes} 分钟后", lambda m=minutes: self._respond_snooze(m))
+        btn_snooze.setMenu(snooze_menu)
+        btn_snooze.setToolTip("选择稍后再次提醒的间隔")
+        btn_snooze.clicked.connect(lambda: self._respond_snooze(5))
         btn_done.clicked.connect(lambda: self._respond("done"))
         btn_close.clicked.connect(lambda: self._respond("close"))
         btns.addWidget(btn_snooze)
@@ -84,20 +90,23 @@ class ReminderDialog(QDialog):
         btns.addWidget(btn_close)
         layout.addLayout(btns)
 
-    def _respond(self, response: str) -> None:
+    def _respond_snooze(self, minutes: int) -> None:
+        self._respond("snooze", minutes=minutes)
+
+    def _respond(self, response: str, minutes: int = 5) -> None:
         self.response = response
         if self.history_id:
             repository.set_history_response(self.history_id, response)
         if response == "done" and self.task.id:
             repository.set_status(self.task.id, "已完成")
         elif response == "snooze" and self.task.id:
-            self._snooze_5min()
+            self._snooze(minutes)
         self.accept()
 
-    def _snooze_5min(self) -> None:
-        """稍后提醒：提醒时间顺延 5 分钟并允许再次触发。"""
+    def _snooze(self, minutes: int) -> None:
+        """稍后提醒：提醒时间顺延 N 分钟并允许再次触发。"""
         base = parse(self.task.reminder_time) or datetime.now()
-        new_time = max(base, datetime.now()) + timedelta(minutes=5)
+        new_time = max(base, datetime.now()) + timedelta(minutes=minutes)
         now = fmt(datetime.now())
         with db.transaction() as c:
             c.execute(
