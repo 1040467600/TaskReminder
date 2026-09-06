@@ -9,7 +9,7 @@ from typing import Optional
 TIME_FMT = "%Y-%m-%d %H:%M"
 
 # 名称/执行人长度限制（字符）
-NAME_MIN, NAME_MAX = 2, 50
+NAME_MIN, NAME_MAX = 1, 50
 # 任务内容纯文本最大长度
 CONTENT_MAX = 5000
 

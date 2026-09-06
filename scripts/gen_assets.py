@@ -19,34 +19,90 @@ ASSETS = ROOT / "task_reminder" / "assets"
 
 # ---------------------------------------------------------------------------
 # ICO 生成
+_SS = 4          # 超采样倍率（抗锯齿）
+
+
+def _lerp(a: int, b: int, t: float) -> int:
+    return int(a + (b - a) * t)
+
+
+def _icon_pixel(x: float, y: float, s: float):
+    """计算逻辑坐标 (x,y) 处的 RGBA；不在圆角方块内返回 None。"""
+    cx = cy = s / 2
+    half = s * 0.48
+    rr = s * 0.215
+    dx = max(abs(x - cx) - (half - rr), 0)
+    dy = max(abs(y - cy) - (half - rr), 0)
+    if dx * dx + dy * dy > rr * rr:
+        return None
+
+    # 背景：垂直渐变 #4F8DF9(上) → #1D4ED8(下)
+    t = max(0.0, min(1.0, (y - (cy - half)) / (2 * half)))
+    r, g, b = _lerp(0x4F, 0x1D, t), _lerp(0x8D, 0x4E, t), _lerp(0xF9, 0xD8, t)
+
+    # 顶部柔光高光（上 40% 区域，白色淡入）
+    if y < cy - half * 0.2:
+        glow = (cy - half * 0.2 - y) / (s * 0.68) * 0.30
+        r = _lerp(r, 255, glow); g = _lerp(g, 255, glow); b = _lerp(b, 255, glow)
+
+    # --- 铃铛 ---
+    ytop = cy - s * 0.30        # 铃顶
+    yrim = cy + s * 0.14        # 铃口
+    rim_half = s * 0.27         # 铃口半宽
+    in_body = False
+    if ytop <= y <= yrim:
+        tt = (y - ytop) / (yrim - ytop)
+        if abs(x - cx) <= rim_half * (0.16 + 0.84 * (tt ** 0.68)):
+            in_body = True
+    # 铃口横条
+    if yrim < y <= yrim + s * 0.045 and abs(x - cx) <= rim_half:
+        in_body = True
+    # 铃锤
+    cl_r = s * 0.062
+    if math.hypot(x - cx, y - (yrim + s * 0.045 + cl_r * 0.8)) <= cl_r:
+        in_body = True
+    if in_body:
+        # 铃身白色，底部略带冷灰更有立体感
+        ts = max(0.0, min(1.0, (y - ytop) / (yrim - ytop + 0.001)))
+        r = _lerp(255, 0xDC, ts * 0.5); g = _lerp(255, 0xE7, ts * 0.5); b = _lerp(255, 0xFB, ts * 0.5)
+
+    # --- 红色消息角标（右上，白色描边） ---
+    bx, by, br = cx + s * 0.275, cy - s * 0.275, s * 0.125
+    d = math.hypot(x - bx, y - by)
+    if d <= br + s * 0.028:
+        if d <= br:
+            r, g, b = 0xEF, 0x44, 0x44          # #EF4444
+        else:
+            r = g = b = 255                      # 白色描边
+    return r, g, b, 255
+
+
 def _draw_icon(size: int) -> bytes:
-    """绘制图标帧：蓝色渐变圆角方块 + 白色铃铛，返回 32bpp BGRA 像素数据。"""
+    """绘制图标帧：蓝色渐变圆角方块 + 白色铃铛 + 红色角标（超采样抗锯齿）。"""
+    big = size * _SS
+    canvas = bytearray(big * big * 4)
+    for y in range(big):
+        for x in range(big):
+            p = _icon_pixel((x + 0.5) / _SS, (y + 0.5) / _SS, size)
+            if p is not None:
+                i = (y * big + x) * 4
+                canvas[i:i + 4] = bytes(int(c) for c in p)
+
+    # 盒式降采样（box filter）
     px = bytearray(size * size * 4)
-    cx = cy = (size - 1) / 2
-    r_rect = size * 0.44          # 圆角半径
-    half = size * 0.46
-    bell_r = size * 0.26
+    n = _SS * _SS
     for y in range(size):
         for x in range(size):
-            # 圆角方块判定
-            dx = max(abs(x - cx) - (half - r_rect), 0)
-            dy = max(abs(y - cy) - (half - r_rect), 0)
-            inside = (dx * dx + dy * dy) <= r_rect * r_rect
-            if not inside:
-                continue
-            idx = (y * size + x) * 4
-            # 对角渐变：#2563EB → #1E40AF
-            t = (x + y) / (2 * size)
-            r = int(0x25 + (0x1E - 0x25) * t)
-            g = int(0x63 + (0x40 - 0x63) * t)
-            b = int(0xEB + (0xAF - 0xEB) * t)
-            # 铃铛（圆顶 + 底部横条）
-            ddx, ddy = x - cx, y - cy * 0.92
-            d = math.hypot(ddx, ddy * 1.15)
-            if d < bell_r:
-                shade = max(0.0, min(1.0, 1.0 - 0.18 * (ddy / bell_r if ddy else 0)))
-                r = g = b = int(255 * shade)
-            px[idx:idx + 4] = bytes((b, g, r, 255))
+            rs = gs = bs = as_ = 0
+            for sy in range(_SS):
+                base = ((y * _SS + sy) * big + x * _SS) * 4
+                for sx in range(_SS):
+                    i = base + sx * 4
+                    rs += canvas[i]; gs += canvas[i + 1]
+                    bs += canvas[i + 2]; as_ += canvas[i + 3]
+            i = (y * size + x) * 4
+            # ICO BMP 帧像素序为 BGRA
+            px[i:i + 4] = bytes((bs // n, gs // n, rs // n, as_ // n))
     return bytes(px)
 
 

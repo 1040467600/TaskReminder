@@ -109,7 +109,8 @@ class ReminderDialog(QDialog):
 class Notifier(QObject):
     """提醒队列：声音 + 托盘气泡 + 逐个弹窗。"""
 
-    queue_changed = pyqtSignal(int)   # 待处理提醒数量
+    queue_changed = pyqtSignal(int)      # 待处理提醒数量
+    responded = pyqtSignal(str)          # 用户在弹窗做出响应（snooze/done/close）
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -151,8 +152,10 @@ class Notifier(QObject):
         self._emit()
 
     def _on_dialog_done(self) -> None:
-        self._dialog = None
+        dlg, self._dialog = self._dialog, None
         self._emit()
+        if dlg is not None and dlg.response:
+            self.responded.emit(dlg.response)
 
     def _emit(self) -> None:
         self.queue_changed.emit(self.pending_count())

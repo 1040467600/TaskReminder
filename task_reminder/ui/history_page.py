@@ -19,6 +19,7 @@ class HistoryPage(QWidget):
         super().__init__(parent)
         self.page_no = 1
         self.page_size = 50
+        self._auto_range = True    # 自动跟随当前时间；用户手动改时间后锁定
         self._build()
         self.refresh()
 
@@ -76,22 +77,36 @@ class HistoryPage(QWidget):
         self.btn_query.clicked.connect(self._on_query)
         self.btn_clear.clicked.connect(self._on_clear)
         self.cmb_quick.currentIndexChanged.connect(self._on_quick)
+        self.dt_from.dateTimeChanged.connect(self._on_manual_range)
+        self.dt_to.dateTimeChanged.connect(self._on_manual_range)
         self.btn_prev.clicked.connect(lambda: self._turn(-1))
         self.btn_next.clicked.connect(lambda: self._turn(1))
 
-    def _on_quick(self):
+    def _on_manual_range(self):
+        """用户手动修改时间范围后，refresh 不再自动覆盖。"""
+        self._auto_range = False
+
+    def _apply_auto_range(self):
+        """按快捷范围自动计算起止时间（结束时间始终跟随当前时刻，
+        否则页面打开后新触发的提醒会落在范围外而查不到）。"""
         key = self.cmb_quick.currentText()
-        days = QUICK.get(key)
-        if days is None:
-            return
+        days = QUICK[key]
         now = datetime.now()
         if days == 0:
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif days is None:
+            start = datetime(2000, 1, 1)
         else:
             start = now - timedelta(days=days)
-        self.dt_from.setDateTime(QDateTime(start))
-        self.dt_to.setDateTime(QDateTime(now))
-        self._on_query()
+        for w, dt in ((self.dt_from, start), (self.dt_to, now)):
+            w.blockSignals(True)
+            w.setDateTime(QDateTime(dt))
+            w.blockSignals(False)
+
+    def _on_quick(self):
+        self._auto_range = True
+        self.page_no = 1
+        self.refresh()
 
     def _on_query(self):
         self.page_no = 1
@@ -102,6 +117,8 @@ class HistoryPage(QWidget):
         self.refresh()
 
     def refresh(self):
+        if self._auto_range:
+            self._apply_auto_range()
         start = self.dt_from.dateTime().toString("yyyy-MM-dd HH:mm")
         end = self.dt_to.dateTime().toString("yyyy-MM-dd HH:mm")
         logs, total = repository.list_history(self.page_no, self.page_size, start, end)

@@ -167,9 +167,63 @@ class TestTaskDialog:
         from task_reminder.ui.task_dialog import TaskDialog
         dlg = TaskDialog()
         qtbot.addWidget(dlg)
-        dlg.edit_name.setText("短")     # 名称过短
+        dlg.edit_name.setText("")       # 名称不能为空（下限 1 字符）
         assert dlg._validate() is not None
         assert not dlg.btn_ok.isEnabled()
+
+    def test_fmt_buttons_no_crash_and_toggle(self, qtbot):
+        """回归：点击 B/I/U 不得使进程崩溃（旧代码 merge() 返回 None 传入
+        setCurrentCharFormat → 槽内 TypeError → qFatal 闪退）。"""
+        from PyQt6.QtGui import QFont
+        from task_reminder.ui.task_dialog import TaskDialog
+        dlg = TaskDialog()
+        qtbot.addWidget(dlg)
+        dlg.edit_content.setPlainText("富文本内容")
+        dlg.show()                      # 必须可见，模拟真实点击
+        # 无选中时点击 B：加粗当前输入格式
+        qtbot.mouseClick(dlg.btn_bold, Qt.MouseButton.LeftButton)
+        f = dlg.edit_content.currentCharFormat()
+        assert f.fontWeight() == QFont.Weight.Bold
+        assert dlg.btn_bold.isChecked()
+        # 再点一次取消加粗
+        qtbot.mouseClick(dlg.btn_bold, Qt.MouseButton.LeftButton)
+        assert dlg.edit_content.currentCharFormat().fontWeight() != QFont.Weight.Bold
+        # I / U 同样操作
+        qtbot.mouseClick(dlg.btn_italic, Qt.MouseButton.LeftButton)
+        assert dlg.edit_content.currentCharFormat().fontItalic()
+        qtbot.mouseClick(dlg.btn_underline, Qt.MouseButton.LeftButton)
+        assert dlg.edit_content.currentCharFormat().fontUnderline()
+        # 清除格式
+        qtbot.mouseClick(dlg.btn_clear_fmt, Qt.MouseButton.LeftButton)
+        f = dlg.edit_content.currentCharFormat()
+        assert not f.fontItalic() and not f.fontUnderline()
+
+    def test_fmt_on_selection(self, qtbot):
+        """选中文字后点击 B：选区字符加粗。"""
+        from task_reminder.ui.task_dialog import TaskDialog
+        dlg = TaskDialog()
+        qtbot.addWidget(dlg)
+        dlg.edit_content.setPlainText("选我加粗")
+        cursor = dlg.edit_content.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(2, cursor.MoveMode.KeepAnchor)
+        dlg.edit_content.setTextCursor(cursor)
+        dlg._fmt(bold=True)
+        html = dlg.edit_content.toHtml()
+        assert "bold" in html.lower() or "font-weight" in html.lower()
+
+    def test_one_char_names_valid(self, qtbot):
+        """名称/执行人 1 字符即可通过校验。"""
+        from task_reminder.ui.task_dialog import TaskDialog
+        from PyQt6.QtCore import QDateTime
+        dlg = TaskDialog()
+        qtbot.addWidget(dlg)
+        dlg.edit_name.setText("A")
+        dlg.edit_assignee.setText("李")
+        dlg.edit_content.setPlainText("x")
+        dlg.dt_deadline.setDateTime(QDateTime(2026, 9, 10, 10, 0))
+        dlg.dt_reminder.setDateTime(QDateTime(2026, 9, 9, 9, 0))
+        assert dlg._validate() is None
 
     def test_valid_save_creates_task(self, qtbot):
         from task_reminder.ui.task_dialog import TaskDialog
@@ -224,3 +278,39 @@ class TestMainWindow:
         win.show()
         win.close()
         assert not win.isVisible()       # 隐藏到托盘而非退出
+
+    def test_reminder_response_refreshes_immediately(self, qtbot):
+        """回归：提醒触发后历史立即可见；弹窗点『标记完成』后任务表立即显示已完成。"""
+        from datetime import datetime, timedelta
+        from task_reminder.models import fmt
+        from task_reminder.ui.main_window import MainWindow
+        now = datetime.now()
+        tid = mk(name="提醒刷新任务",
+                 deadline=fmt(now + timedelta(hours=1)),
+                 reminder=fmt(now - timedelta(minutes=1)))
+        win = MainWindow()
+        qtbot.addWidget(win)
+        win.show()
+
+        # 模拟轮询触发（真实应用由事件循环执行 singleShot，测试中直接调 pump）
+        due = repo.due_for_reminder()
+        task = next(t for t in due if t.id == tid)
+        hid = repo.mark_triggered(tid)
+        win._on_task_due(task, hid)
+        win.notifier.pump()
+
+        # 历史页无需切页即已包含本次提醒（结束时间自动跟随当前时刻）
+        assert win.history_page.table.rowCount() >= 1
+        row0 = [win.history_page.table.item(0, c).text() for c in range(6)]
+        assert row0[4] == "未响应"
+
+        # 弹窗出现并点『标记完成』
+        assert win.notifier._dialog is not None
+        win.notifier._dialog._respond("done")
+        assert win.notifier._dialog is None
+
+        # 任务表立即显示已完成（无需手动刷新）
+        row_task = next(t for t in win.tasks_page.model.all_tasks() if t.id == tid)
+        assert row_task.status == "已完成"
+        # 历史页第一行响应列同步为『标记完成』
+        assert win.history_page.table.item(0, 4).text() == "标记完成"

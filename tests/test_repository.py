@@ -21,7 +21,12 @@ def mk(name="编写季度报告", assignee="张三", content="<b>重要</b>事�
 class TestValidation:
     def test_name_too_short(self):
         with pytest.raises(repo.ValidationError):
-            repo.add_task("张", "张三", "x", "2026-09-10 10:00", "2026-09-09 10:00")
+            repo.add_task("", "张三", "x", "2026-09-10 10:00", "2026-09-09 10:00")
+
+    def test_name_one_char_ok(self):
+        """名称/执行人下限为 1 字符。"""
+        tid = repo.add_task("A", "李", "x", "2026-09-10 10:00", "2026-09-09 10:00")
+        assert repo.get_task(tid).name == "A"
 
     def test_name_too_long(self):
         with pytest.raises(repo.ValidationError):
@@ -29,7 +34,7 @@ class TestValidation:
 
     def test_assignee_length(self):
         with pytest.raises(repo.ValidationError):
-            repo.add_task("合法名称", "李", "x", "2026-09-10 10:00", "2026-09-09 10:00")
+            repo.add_task("合法名称", "", "x", "2026-09-10 10:00", "2026-09-09 10:00")
 
     def test_reminder_must_be_before_deadline(self):
         with pytest.raises(repo.ValidationError):

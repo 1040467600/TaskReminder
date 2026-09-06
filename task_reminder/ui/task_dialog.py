@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QComboBox, QDateTimeEdit, QDialog, QFormLayout, QHB
                              QTextEdit, QVBoxLayout)
 
 from .. import repository
-from ..models import CONTENT_MAX, NAME_MAX, Task, TaskStatus, plain_len
+from ..models import CONTENT_MAX, NAME_MAX, NAME_MIN, Task, TaskStatus, plain_len
 
 
 class TaskDialog(QDialog):
@@ -32,13 +32,13 @@ class TaskDialog(QDialog):
         # 名称
         self.edit_name = QLineEdit()
         self.edit_name.setMaxLength(NAME_MAX)
-        self.edit_name.setPlaceholderText("2-50 个字符")
+        self.edit_name.setPlaceholderText("1-50 个字符")
         form.addRow("任务名称：", self.edit_name)
 
         # 执行人
         self.edit_assignee = QLineEdit()
         self.edit_assignee.setMaxLength(NAME_MAX)
-        self.edit_assignee.setPlaceholderText("2-50 个字符")
+        self.edit_assignee.setPlaceholderText("1-50 个字符")
         form.addRow("执行人：", self.edit_assignee)
 
         # 富文本内容
@@ -72,6 +72,7 @@ class TaskDialog(QDialog):
         self.edit_content.setMinimumHeight(120)
         self.edit_content.setPlaceholderText("支持富文本：加粗 / 斜体 / 下划线，最多 5000 字")
         self.edit_content.textChanged.connect(self._on_content_changed)
+        self.edit_content.currentCharFormatChanged.connect(self._on_fmt_changed)
         content_box.addWidget(self.edit_content)
         form.addRow("任务内容：", content_box)
 
@@ -153,15 +154,41 @@ class TaskDialog(QDialog):
         if underline is not None:
             cf.setFontUnderline(underline)
         cursor = self.edit_content.textCursor()
-        if not cursor.hasSelection():
-            self.edit_content.setCurrentCharFormat(
-                self.edit_content.currentCharFormat().merge(cf))
-        else:
+        if cursor.hasSelection():
+            # 选中文字：合并格式到选区
             cursor.mergeCharFormat(cf)
+            self.edit_content.setTextCursor(cursor)
+        else:
+            # 无选中：修改当前输入格式（注意 merge() 原地修改且返回 None，
+            # 不能把返回值直接传入 setCurrentCharFormat，否则槽内 TypeError 会终止进程）
+            fmt = self.edit_content.currentCharFormat()
+            fmt.merge(cf)
+            self.edit_content.setCurrentCharFormat(fmt)
+        self._sync_fmt_buttons()
 
     def _clear_fmt(self):
+        fmt = QTextCharFormat()
         cursor = self.edit_content.textCursor()
-        cursor.setCharFormat(QTextCharFormat())
+        if cursor.hasSelection():
+            cursor.setCharFormat(fmt)
+            self.edit_content.setTextCursor(cursor)
+        # 无选中时也重置当前输入格式（QTextCursor.setCharFormat 只作用于选区）
+        self.edit_content.setCurrentCharFormat(fmt)
+        self._sync_fmt_buttons()
+
+    def _sync_fmt_buttons(self):
+        """让 B/I/U 按钮的按下状态跟随光标处字符格式。"""
+        f = self.edit_content.currentCharFormat()
+        for btn, on in ((self.btn_bold, f.fontWeight() == QFont.Weight.Bold),
+                        (self.btn_italic, f.fontItalic()),
+                        (self.btn_underline, f.fontUnderline())):
+            if btn.isChecked() != on:
+                btn.blockSignals(True)
+                btn.setChecked(on)
+                btn.blockSignals(False)
+
+    def _on_fmt_changed(self, fmt):
+        self._sync_fmt_buttons()
 
     def _on_content_changed(self):
         n = plain_len(self.edit_content.toHtml())
@@ -175,10 +202,10 @@ class TaskDialog(QDialog):
         name = self.edit_name.text().strip()
         assignee = self.edit_assignee.text().strip()
         err = None
-        if len(name) < 2:
-            err = "任务名称至少 2 个字符"
-        elif len(assignee) < 2:
-            err = "执行人姓名至少 2 个字符"
+        if len(name) < NAME_MIN:
+            err = f"任务名称至少 {NAME_MIN} 个字符"
+        elif len(assignee) < NAME_MIN:
+            err = f"执行人姓名至少 {NAME_MIN} 个字符"
         elif plain_len(self.edit_content.toHtml()) > CONTENT_MAX:
             err = f"任务内容最多 {CONTENT_MAX} 字"
         else:

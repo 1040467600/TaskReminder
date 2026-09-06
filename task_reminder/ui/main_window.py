@@ -147,6 +147,7 @@ class MainWindow(QMainWindow):
     def _wire(self):
         self.service.task_due.connect(self._on_task_due)
         self.notifier.queue_changed.connect(self._update_next_status)
+        self.notifier.responded.connect(self._on_reminder_responded)
         self.tasks_page.data_changed.connect(self.dashboard_page.refresh)
         self.tasks_page.data_changed.connect(self._update_next_status)
         self.settings_page.theme_changed.connect(self._apply_theme)
@@ -163,9 +164,17 @@ class MainWindow(QMainWindow):
     def _on_task_due(self, task, history_id):
         self.notifier.notify(task, history_id)
         QTimer.singleShot(0, self.notifier.pump)
-        if self.stack.currentIndex() in (0, 1):
-            self.tasks_page.refresh()
-            self.dashboard_page.refresh()
+        # 提醒一旦触发，立即刷新任务表/看板/历史，避免用户看到滞后数据
+        self.tasks_page.refresh()
+        self.dashboard_page.refresh()
+        self.history_page.refresh()
+
+    def _on_reminder_responded(self, response: str):
+        """弹窗响应（稍后提醒/标记完成/关闭）后立即刷新所有页面数据。"""
+        self.tasks_page.refresh()
+        self.dashboard_page.refresh()
+        self.history_page.refresh()
+        self._update_next_status()
 
     def _apply_theme(self, theme_name: str, font_size: int):
         theme.apply_theme(QApplication.instance(), theme_name, font_size)
