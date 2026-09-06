@@ -41,8 +41,8 @@ if (-not $SkipInstaller) {
     if (Test-Path $Zip) { Remove-Item $Zip -Force }
     Compress-Archive -Path (Join-Path $Root "dist\TaskReminder\*") -DestinationPath $Zip
 
-    # version file for the installer（直接 import 取版本号，避免正则/引号问题）
-    $Ver = & $Py -c "import sys; sys.path.insert(0, r'$Root'); from task_reminder import __version__; print(__version__)"
+    # version file for the installer（脚本文件取版本，避免 -c 引号/参数传递问题）
+    $Ver = & $Py (Join-Path $PSScriptRoot "print_version.py")
     if (-not $Ver) { $Ver = "0.0.0" }
     Write-Host "installer version: $Ver" -ForegroundColor Yellow
     Set-Content -Path (Join-Path $Root "build\app_version.txt") -Value $Ver -NoNewline -Encoding Ascii

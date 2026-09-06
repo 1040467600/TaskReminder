@@ -42,7 +42,8 @@ def payload_zip() -> Path:
 def read_version() -> str:
     vf = resource("app_version.txt")
     if vf.exists():
-        return vf.read_text(encoding="utf-8").strip()
+        # 剥掉可能存在的 BOM 与空白，避免注册表 DisplayVersion 带 BOM
+        return vf.read_text(encoding="utf-8-sig").replace("\ufeff", "").strip()
     return "1.0.0"
 
 
