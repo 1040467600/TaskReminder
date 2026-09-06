@@ -1,4 +1,4 @@
-﻿"""GUI 截图：启动主窗口，抓取各页面与对话框存为 PNG（供用户手册使用）。
+"""GUI 截图：启动主窗口，抓取各页面与对话框存为 PNG（供用户手册使用）。
 
 用法：python scripts\\capture_screens.py
 
@@ -24,7 +24,7 @@ IMG_DIR = ROOT / "docs" / "images"
 
 def main() -> int:
     from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QFont, QFontDatabase
+    from PyQt6.QtGui import QFont
     from PyQt6.QtWidgets import QApplication
 
     from task_reminder import db, repository as repo
@@ -37,9 +37,9 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setAttribute(Qt.ApplicationAttribute.AA_Use96Dpi, True)
     app.setFont(QFont("Microsoft YaHei UI", 10))
-    print("font families:", len(QFontDatabase.families()))
 
     db.init()
+    # 造演示数据
     if not repo.all_tasks():
         now = datetime.now()
         repo.add_task("编写季度总结报告", "张伟", "汇总 Q3 各部门数据并撰写报告。",
@@ -77,6 +77,7 @@ def main() -> int:
     shot(dlg, "task_dialog.png")
     dlg.close()
 
+    # 深色主题对比图
     theme.apply_theme(app, "dark", 13)
     win._apply_theme("dark", 13)
     app.processEvents()
