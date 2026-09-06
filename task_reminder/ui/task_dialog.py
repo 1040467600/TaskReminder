@@ -1,7 +1,7 @@
 """新建/编辑任务对话框：富文本编辑 + 实时字段校验。"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QTextCharFormat
@@ -129,9 +129,12 @@ class TaskDialog(QDialog):
     # ------------------------------------------------------------------
     def _default_times(self):
         now = datetime.now()
-        self.dt_deadline.setDateTime(now.replace(minute=0, second=0, microsecond=0)
-                                     .replace(hour=now.hour + 1 if now.hour < 23 else now.hour))
-        self.dt_reminder.setDateTime(now.replace(second=0, microsecond=0))
+        reminder = now.replace(second=0, microsecond=0)
+        # 截止 = 提醒 + 1 小时：任何时刻打开都满足"提醒早于截止"，
+        # 避免 23 点后默认截止时间落在提醒之前导致一打开就校验失败
+        deadline = reminder + timedelta(hours=1)
+        self.dt_deadline.setDateTime(deadline)
+        self.dt_reminder.setDateTime(reminder)
 
     def _load(self, t: Task):
         self.edit_name.setText(t.name)

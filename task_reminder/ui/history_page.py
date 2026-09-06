@@ -113,7 +113,8 @@ class HistoryPage(QWidget):
         self.refresh()
 
     def _turn(self, d: int):
-        self.page_no = max(1, self.page_no + d)
+        pages = getattr(self, "_pages", 1)
+        self.page_no = max(1, min(self.page_no + d, pages))
         self.refresh()
 
     def refresh(self):
@@ -138,6 +139,7 @@ class HistoryPage(QWidget):
                         item.setForeground(Qt.GlobalColor.gray)
                 self.table.setItem(row, col, item)
         pages = max(1, (total + self.page_size - 1) // self.page_size)
+        self._pages = pages
         self.lbl_info.setText(f"共 {total} 条　第 {self.page_no}/{pages} 页")
         self.btn_prev.setEnabled(self.page_no > 1)
         self.btn_next.setEnabled(self.page_no < pages)

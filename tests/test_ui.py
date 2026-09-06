@@ -50,7 +50,9 @@ class TestTasksPage:
         page.refresh()
         assert page.model.rowCount() == 3
         assert page.pager.total == 3
-        page._on_page_size_changed(2)
+        # 真实用户路径：分页菜单选"每页 2 条"（pager 状态更新后才发信号）
+        page.pager._set_size(2)
+        assert page.pager.size == 2
         assert page.model.rowCount() <= 2
 
     def test_sort_visual_and_state(self, qtbot):

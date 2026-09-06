@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QGroupBox, QHBoxLayout,
                              QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
                              QSpinBox, QVBoxLayout, QWidget)
@@ -16,7 +16,10 @@ THEME_NAMES = {"light": "浅色主题", "dark": "深色主题"}
 
 
 class SettingsPage(QWidget):
-    theme_changed = __import__("PyQt6.QtCore", fromlist=["pyqtSignal"]).pyqtSignal(str, int)
+    theme_changed = pyqtSignal(str, int)
+    behavior_changed = pyqtSignal()
+    data_restored = pyqtSignal()
+    searches_changed = pyqtSignal()      # 已保存搜索被删除 → 同步搜索栏下拉框
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -151,13 +154,15 @@ class SettingsPage(QWidget):
         if sound_file:
             self.cmb_sound.addItem(f"自定义：{sound_file}", sound_file)
             self.cmb_sound.setCurrentIndex(self.cmb_sound.count() - 1)
-        self._reload_searches()
+        self.reload_searches()
 
     def _save(self):
         app_config.set("poll_interval", self.spin_interval.value())
         app_config.set("sound_enabled", self.chk_sound.isChecked())
         app_config.set("tray_close", self.chk_tray_close.isChecked())
         app_config.set("page_size", self.cmb_page_size.currentData())
+        # 通知主窗口立即应用（轮询间隔/每页条数），无需重启
+        self.behavior_changed.emit()
 
     def _apply(self):
         theme = self.cmb_theme.currentData() or "light"
@@ -166,7 +171,7 @@ class SettingsPage(QWidget):
         app_config.set("font_size", font)
         self.theme_changed.emit(theme, font)
 
-    def _reload_searches(self):
+    def reload_searches(self):
         self.list_searches.clear()
         for item in repository.list_searches():
             QListWidgetItem(item["name"], self.list_searches)
@@ -180,22 +185,24 @@ class SettingsPage(QWidget):
             if s["name"] == item.text():
                 repository.delete_search(s["id"])
                 break
-        self._reload_searches()
+        self.reload_searches()
+        # 通知任务页搜索栏同步刷新下拉框
+        self.searches_changed.emit()
 
     def _pick_sound(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择音效文件", "",
                                               "音频文件 (*.wav)")
-        if path:
-            app_config.set("sound_file", path)
-            label = f"自定义：{path}"
-            if self.cmb_sound.currentData() not in (None, "") and \
-                    self.cmb_sound.currentText().startswith("自定义："):
-                self.cmb_sound.setItemText(self.cmb_sound.currentIndex(), label)
-                self.cmb_sound.setItemData(self.cmb_sound.currentIndex(), path)
-            else:
-                self.cmb_sound.addItem(label, path)
-                self.cmb_sound.setCurrentIndex(self.cmb_sound.count() - 1)
-            self._save_sound()
+        if not path:
+            return
+        app_config.set("sound_file", path)
+        # 只保留一个自定义项：先移除旧项再追加，避免多次浏览后下拉框堆积
+        for i in range(self.cmb_sound.count()):
+            if self.cmb_sound.itemText(i).startswith("自定义："):
+                self.cmb_sound.removeItem(i)
+                break
+        self.cmb_sound.addItem(f"自定义：{path}", path)
+        self.cmb_sound.setCurrentIndex(self.cmb_sound.count() - 1)
+        self._save_sound()
 
     def _on_sound_selected(self):
         self._save_sound()
@@ -228,6 +235,8 @@ class SettingsPage(QWidget):
             QMessageBox.warning(self, "恢复失败", f"备份文件无效：{e}")
             return
         QMessageBox.information(self, "恢复完成", f"已导入 {n_tasks} 条任务、{n_hist} 条提醒历史。")
+        # 通知各页面立即刷新恢复后的数据
+        self.data_restored.emit()
 
     def _open_dir(self):
         import os

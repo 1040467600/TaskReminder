@@ -156,6 +156,8 @@ class Notifier(QObject):
         self._emit()
         if dlg is not None and dlg.response:
             self.responded.emit(dlg.response)
+        # 队列里还有待展示的提醒 → 立即弹出下一个（否则要等下一轮轮询）
+        self.pump()
 
     def _emit(self) -> None:
         self.queue_changed.emit(self.pending_count())

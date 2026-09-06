@@ -82,10 +82,16 @@ def update_task(task_id: int, name: str, assignee: str, content: str, deadline: 
             (name.strip(), assignee.strip(), content, deadline, reminder_time, status, notes,
              sc_at, now, task_id),
         )
-    # 状态改为已完成时清除未触发的提醒标记
+    # 状态改为已完成时清除未触发的提醒标记；从已完成改回未完成时，
+    # 若提醒时间在未来则重新允许触发（否则 triggered 仍为 1，不会再提醒）
     if status == TaskStatus.DONE:
         with db.transaction() as c:
             c.execute("UPDATE tasks SET triggered=1 WHERE id=?", (task_id,))
+    elif old is not None and old.status == TaskStatus.DONE:
+        rt = parse(reminder_time)
+        if rt and rt > datetime.now():
+            with db.transaction() as c:
+                c.execute("UPDATE tasks SET triggered=0 WHERE id=?", (task_id,))
 
 
 def set_status(task_id: int, status: str) -> None:

@@ -146,13 +146,15 @@ class DashboardPage(QWidget):
         ])
         up = self.list_upcoming["list"]
         up.clear()
-        for t in repository.upcoming_reminders(10):
+        upcoming = repository.upcoming_reminders(10)
+        for t in upcoming:
             up.addItem(QListWidgetItem(f"⏰ {t.reminder_time}　{t.summary()}　（{t.assignee}）"))
-        if not repository.upcoming_reminders(1):
+        if not upcoming:
             up.addItem(QListWidgetItem("暂无即将到来的提醒"))
         od = self.list_overdue["list"]
         od.clear()
-        for t in repository.overdue_tasks(10):
+        overdue = repository.overdue_tasks(10)
+        for t in overdue:
             od.addItem(QListWidgetItem(f"⚠️ {t.deadline}　{t.summary()}　（{t.assignee}）"))
-        if not repository.overdue_tasks(1):
+        if not overdue:
             od.addItem(QListWidgetItem("没有过期任务，保持得很好"))

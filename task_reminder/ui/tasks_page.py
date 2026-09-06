@@ -115,7 +115,8 @@ class TasksPage(QWidget):
         header.setSortIndicatorShown(True)                    # 排序箭头可视化
         header.setSortIndicatorClearable(True)
         header.sortIndicatorChanged.connect(self._on_sort_changed)
-        header.sectionClicked.connect(self._on_header_clicked)
+        # 注意：不要再连 sectionClicked —— Qt 点击表头本身就会推进排序指示器并
+        # 发出 sortIndicatorChanged，再叠加 sectionClicked 会导致一次点击推进两步
         header.sectionMoved.connect(self._on_column_moved)
         header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         header.customContextMenuRequested.connect(self._show_column_menu_at)
@@ -138,8 +139,9 @@ class TasksPage(QWidget):
         self.empty_hint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.view.viewport().installEventFilter(self)
 
-        # 分页
+        # 分页（初始条数取设置页的配置）
         self.pager = PaginationBar()
+        self.pager.size = max(1, int(app_config.get("page_size", 200)))
         self.pager.page_changed.connect(self._on_page_changed)
         self.pager.page_size_changed.connect(self._on_page_size_changed)
         tv.addWidget(self.pager)
@@ -178,9 +180,10 @@ class TasksPage(QWidget):
 
     def _column_state(self):
         header: QHeaderView = self.view.horizontalHeader()
+        # 按当前视觉顺序保存（logicalIndex 不随拖拽变化，直接遍历会丢掉列顺序）
+        logicals = sorted(range(len(COLUMNS)), key=header.visualIndex)
         state = []
-        for logical in range(len(COLUMNS)):
-            title = self.model.headerData(logical, Qt.Orientation.Horizontal)
+        for logical in logicals:
             cid = self.model.column_ids[logical]
             state.append({
                 "id": cid,
@@ -222,22 +225,26 @@ class TasksPage(QWidget):
 
     # ------------------------------------------------------------------
     # 排序可视化
+    SORTABLE = {"name", "assignee", "deadline", "reminder_time", "status"}
+
     def _on_header_clicked(self, logical: int):
-        cid = self.model.column_ids[logical]
-        sortable = {"name", "assignee", "deadline", "reminder_time", "status"}
-        if cid not in sortable:
+        """程序化推进排序循环：升序 → 降序 → 默认（通过指示器统一走
+        sortIndicatorChanged，避免与 Qt 原生点击路径互相打架）。"""
+        if not (0 <= logical < len(self.model.column_ids)):
             return
-        # 循环：升序 → 降序 → 默认
-        if self.sort_key == cid:
-            self.sort_dir = {"": "asc", "asc": "desc", "desc": ""}[self.sort_dir]
+        cid = self.model.column_ids[logical]
+        if cid not in self.SORTABLE:
+            return
+        header: QHeaderView = self.view.horizontalHeader()
+        if self.sort_key == cid and self.sort_dir == "asc":
+            header.setSortIndicator(logical, Qt.SortOrder.DescendingOrder)
+        elif self.sort_key == cid and self.sort_dir == "desc":
+            header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         else:
-            self.sort_key, self.sort_dir = cid, "asc"
-        self._update_sort_indicator()
-        self._save_states()
-        self.refresh()
+            header.setSortIndicator(logical, Qt.SortOrder.AscendingOrder)
 
     def _on_sort_changed(self, logical, order):
-        """点击表头排序指示器（Qt 原生交互）同样生效。"""
+        """排序指示器变化（Qt 原生点击/程序化）→ 更新状态并刷新。"""
         if logical < 0:
             # 指示器被清除 → 恢复默认（按创建时间，无方向）
             self.sort_key, self.sort_dir = "created_at", ""
@@ -245,7 +252,9 @@ class TasksPage(QWidget):
             self.refresh()
             return
         cid = self.model.column_ids[logical]
-        if cid in ("actions", "notes"):
+        if cid not in self.SORTABLE:
+            # 不可排序列：恢复原指示器（阻塞信号防递归）
+            self._update_sort_indicator()
             return
         self.sort_key = cid
         self.sort_dir = "asc" if order == Qt.SortOrder.AscendingOrder else "desc"
@@ -310,18 +319,32 @@ class TasksPage(QWidget):
     # ------------------------------------------------------------------
     # 数据刷新
     def refresh(self):
+        size = max(1, self.pager.size)
         criteria = self.search.criteria()
         tasks, total = repository.list_tasks(
-            page=self.page_no, sort_key=self.sort_key if self.sort_dir else "created_at",
+            page=self.page_no, page_size=size,
+            sort_key=self.sort_key if self.sort_dir else "created_at",
             sort_dir=self.sort_dir or "desc", criteria=criteria)
+        # 当前页超出总页数（如删除/筛选后）→ 回退到最后一页重新查询
+        pages = max(1, (total + size - 1) // size)
+        if self.page_no > pages:
+            self.page_no = pages
+            tasks, total = repository.list_tasks(
+                page=self.page_no, page_size=size,
+                sort_key=self.sort_key if self.sort_dir else "created_at",
+                sort_dir=self.sort_dir or "desc", criteria=criteria)
         self.model.set_tasks(tasks)
-        self.pager.update_info(total, self.page_no,
-                               self.pager.size or int(app_config.get("page_size", 200)))
+        self.pager.update_info(total, self.page_no, size)
         # 空数据提示
         self.empty_hint.setVisible(total == 0)
         if total == 0:
             self.empty_hint.setGeometry(self.view.viewport().rect())
             self.empty_hint.raise_()
+
+    def sync_page_size(self, n: int):
+        """设置页修改每页条数后立即生效。"""
+        if n != self.pager.size:
+            self.pager._set_size(n)   # 触发 page_size_changed → 重查
 
     def _on_search_changed(self, _criteria):
         self.page_no = 1

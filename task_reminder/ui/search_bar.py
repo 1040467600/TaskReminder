@@ -96,16 +96,19 @@ class SearchBar(QWidget):
         self.btn_load = QPushButton("加载")
         self.btn_save = QPushButton("保存当前")
         self.btn_del = QPushButton("删除")
-        for b in (self.btn_load, self.btn_save, self.btn_del):
+        self.btn_reset = QPushButton("重置")
+        for b in (self.btn_load, self.btn_save, self.btn_del, self.btn_reset):
             b.setObjectName("btnRow")
         self.btn_load.clicked.connect(self._load_saved)
         self.btn_save.clicked.connect(self._save_current)
         self.btn_del.clicked.connect(self._delete_saved)
+        self.btn_reset.clicked.connect(self.reset)
         grid.addWidget(self.cmb_saved, 3, 1, 1, 2)
         row_btns = QHBoxLayout()
         row_btns.addWidget(self.btn_load)
         row_btns.addWidget(self.btn_save)
         row_btns.addWidget(self.btn_del)
+        row_btns.addWidget(self.btn_reset)
         row_btns.addStretch(1)
         grid.addLayout(row_btns, 3, 3)
 
@@ -171,6 +174,8 @@ class SearchBar(QWidget):
     def _load_saved(self) -> None:
         item = self.cmb_saved.currentData()
         if item:
+            # 展开高级面板，避免筛选条件在收起状态下"静默生效"让用户困惑
+            self.btn_advanced.setChecked(True)
             self.set_criteria(item["criteria"])
 
     def _save_current(self) -> None:
@@ -187,11 +192,3 @@ class SearchBar(QWidget):
         if item:
             repository.delete_search(item["id"])
             self.reload_saved_searches()
-
-    # 快捷：今天创建
-    def quick_today(self) -> None:
-        today = QDate.currentDate()
-        self.panel.show()
-        self.btn_advanced.setChecked(True)
-        self.d_created_lo.setDate(today)
-        self.d_created_hi.setDate(today)

@@ -63,7 +63,11 @@ class TestNotifierLogic:
         dlg = n._dialog
         dlg._respond("done")
         assert dlg.response == "done"
+        # 修复 #2：关闭后队列中的下一条提醒应立即自动弹出，而不是等下一轮轮询
+        assert n._dialog is not None and n._dialog is not dlg
+        n._dialog._respond("done")
         assert n._dialog is None
+        assert n.pending_count() == 0
         assert repo.get_task(tid).status == TaskStatus.DONE
         log = repo.list_history()[0][0]
         assert log.response == "done"

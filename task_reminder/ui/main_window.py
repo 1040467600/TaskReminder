@@ -116,6 +116,9 @@ class MainWindow(QMainWindow):
         elif key == "tasks":
             self.tasks_page.refresh()
             self.status_sort.setText(f"　排序：{self.tasks_page.current_sort_text()}")
+        elif key == "settings":
+            # 设置页的已保存搜索列表与任务页搜索栏保持同步
+            self.settings_page.reload_searches()
 
     # ------------------------------------------------------------------
     def _build_tray(self):
@@ -132,6 +135,8 @@ class MainWindow(QMainWindow):
         self.tray.activated.connect(
             lambda r: self._show_normal() if r == QSystemTrayIcon.ActivationReason.DoubleClick else None)
         self.tray.show()
+        # 让通知器持有托盘引用，后台触发时才能弹出系统气泡
+        self.notifier.setup_tray(self.tray)
 
     def _show_normal(self):
         self.showNormal()
@@ -150,7 +155,15 @@ class MainWindow(QMainWindow):
         self.notifier.responded.connect(self._on_reminder_responded)
         self.tasks_page.data_changed.connect(self.dashboard_page.refresh)
         self.tasks_page.data_changed.connect(self._update_next_status)
+        # 任务页分页菜单改每页条数 → 同步设置页下拉框显示
+        self.tasks_page.pager.page_size_changed.connect(self._sync_settings_page_size)
         self.settings_page.theme_changed.connect(self._apply_theme)
+        # 设置页改动立即生效（轮询间隔/每页条数），无需重启
+        self.settings_page.behavior_changed.connect(self._on_behavior_changed)
+        # 恢复备份后立即刷新所有页面
+        self.settings_page.data_restored.connect(self._on_data_restored)
+        # 设置页删除已保存搜索 → 同步任务页搜索栏下拉框
+        self.settings_page.searches_changed.connect(self.tasks_page.search.reload_saved_searches)
         self.service.start()
         QTimer.singleShot(0, self.notifier.pump)
 
@@ -175,6 +188,27 @@ class MainWindow(QMainWindow):
         self.dashboard_page.refresh()
         self.history_page.refresh()
         self._update_next_status()
+
+    def _on_behavior_changed(self):
+        """设置页行为改动立即应用：轮询间隔 + 每页条数。"""
+        self.service.apply_interval()
+        self.tasks_page.sync_page_size(int(app_config.get("page_size", 200)))
+        self._update_next_status()
+
+    def _on_data_restored(self):
+        """恢复备份后刷新所有页面数据。"""
+        self.tasks_page.refresh()
+        self.dashboard_page.refresh()
+        self.history_page.refresh()
+        self._update_next_status()
+
+    def _sync_settings_page_size(self, n: int):
+        """任务页分页菜单改每页条数后，让设置页下拉框同步显示。"""
+        i = self.settings_page.cmb_page_size.findData(n)
+        if i >= 0 and i != self.settings_page.cmb_page_size.currentIndex():
+            self.settings_page.cmb_page_size.blockSignals(True)
+            self.settings_page.cmb_page_size.setCurrentIndex(i)
+            self.settings_page.cmb_page_size.blockSignals(False)
 
     def _apply_theme(self, theme_name: str, font_size: int):
         theme.apply_theme(QApplication.instance(), theme_name, font_size)
