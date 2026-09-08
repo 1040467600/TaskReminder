@@ -3,21 +3,54 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QDate, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QGridLayout, QHBoxLayout,
-                             QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget)
+                             QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout,
+                             QWidget)
 
 
-def make_year_buttons(date_edit: QDateEdit) -> tuple[QPushButton, QPushButton]:
-    """为日期框生成一对翻年按钮（« 上一年 / 下一年 »），与日历内单箭头翻月区分。"""
-    prev = QPushButton("«")
-    nxt = QPushButton("»")
-    for btn in (prev, nxt):
-        btn.setObjectName("btnYear")
-        btn.setFixedWidth(28)
-    prev.setToolTip("上一年")
-    nxt.setToolTip("下一年")
-    prev.clicked.connect(lambda: date_edit.setDate(date_edit.date().addYears(-1)))
-    nxt.clicked.connect(lambda: date_edit.setDate(date_edit.date().addYears(1)))
-    return prev, nxt
+def add_calendar_year_buttons(date_edit: QDateEdit) -> None:
+    """在 QDateEdit 弹出日历的导航栏中，翻月按钮（◀ ▶）旁插入翻年按钮（« »）。
+
+    导航栏原生布局：[◀ 上月] [月份] [年份] [下月 ▶]
+    改造后布局：    [« 上年] [◀ 上月] [月份] [年份] [下月 ▶] [下年 »]
+    """
+    cal = date_edit.calendarWidget()
+    if cal is None:
+        return
+    nav = cal.findChild(QWidget, "qt_calendar_navigationbar")
+    if nav is None:
+        return
+    layout = nav.layout()
+    if layout is None:
+        return
+    prev_month = cal.findChild(QToolButton, "qt_calendar_prevmonth")
+    next_month = cal.findChild(QToolButton, "qt_calendar_nextmonth")
+    if prev_month is None or next_month is None:
+        return
+
+    def _shift(delta: int):
+        cal.setCurrentPage(cal.yearShown() + delta, cal.monthShown())
+
+    btn_prev_year = QToolButton(nav)
+    btn_prev_year.setText("«")
+    btn_prev_year.setToolTip("上一年")
+    btn_prev_year.setObjectName("calYearBtn")
+    btn_prev_year.setAutoRaise(True)
+    btn_prev_year.setFixedSize(28, 28)
+    btn_prev_year.clicked.connect(lambda: _shift(-1))
+
+    btn_next_year = QToolButton(nav)
+    btn_next_year.setText("»")
+    btn_next_year.setToolTip("下一年")
+    btn_next_year.setObjectName("calYearBtn")
+    btn_next_year.setAutoRaise(True)
+    btn_next_year.setFixedSize(28, 28)
+    btn_next_year.clicked.connect(lambda: _shift(1))
+
+    # 插到翻月按钮外侧：« 放在 ◀ 左边，» 放在 ▶ 右边
+    idx_prev = layout.indexOf(prev_month)
+    layout.insertWidget(idx_prev, btn_prev_year)
+    idx_next = layout.indexOf(next_month)
+    layout.insertWidget(idx_next + 1, btn_next_year)
 
 
 class SearchBar(QWidget):
@@ -99,7 +132,7 @@ class SearchBar(QWidget):
         grid.addLayout(status_row, 1, 3)
 
         # 日期范围：带启用开关，取消勾选即恢复"不限"。
-        # 每个日期框两侧加翻年按钮（« » 双箭头），区别于日历弹出框内的单箭头 ◀ ▶（翻月）。
+        # 翻年按钮（« »）在弹出日历的导航栏内、翻月按钮（◀ ▶）旁。
         self._date_ranges = {}
         for r, (label, key) in enumerate([("创建时间：", "created"), ("截止时间：", "deadline")],
                                          start=2):
@@ -115,19 +148,12 @@ class SearchBar(QWidget):
                 w.setDate(QDate.currentDate())
                 w.setFixedWidth(130)
                 w.dateChanged.connect(self._debounce.start)
+                add_calendar_year_buttons(w)
             chk.toggled.connect(self._on_range_toggled)
-            # 起始：«  从  [lo]  »
-            lo_prev, lo_next = make_year_buttons(lo)
             grid.addWidget(QLabel("从"), r, 2, Qt.AlignmentFlag.AlignRight)
-            grid.addWidget(lo_prev, r, 3)
-            grid.addWidget(lo, r, 4)
-            grid.addWidget(lo_next, r, 5)
-            # 结束：至  «  [hi]  »
-            hi_prev, hi_next = make_year_buttons(hi)
-            grid.addWidget(QLabel("至"), r, 6, Qt.AlignmentFlag.AlignRight)
-            grid.addWidget(hi_prev, r, 7)
-            grid.addWidget(hi, r, 8)
-            grid.addWidget(hi_next, r, 9)
+            grid.addWidget(lo, r, 3)
+            grid.addWidget(QLabel("至"), r, 4, Qt.AlignmentFlag.AlignRight)
+            grid.addWidget(hi, r, 5)
             self._date_ranges[key] = {"chk": chk, "lo": lo, "hi": hi}
 
         self.panel.hide()

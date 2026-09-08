@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QComboBox, QDateEdit, QHBoxLayout, QHeaderView,
                              QVBoxLayout, QWidget)
 
 from .. import repository
-from .search_bar import make_year_buttons
+from .search_bar import add_calendar_year_buttons
 from .widgets import confirm
 
 QUICK = {"全部": None, "今天": 0, "近7天": 7, "近30天": 30}
@@ -37,9 +37,7 @@ class HistoryPage(QWidget):
             w.setDisplayFormat("yyyy-MM-dd")
             w.setDate(QDate.currentDate())
             w.setFixedWidth(130)
-        # 翻年按钮（« » 双箭头），区别于日历内单箭头 ◀ ▶（翻月）
-        from_prev, from_next = make_year_buttons(self.dt_from)
-        to_prev, to_next = make_year_buttons(self.dt_to)
+            add_calendar_year_buttons(w)
         self.btn_query = QPushButton("查询")
         self.btn_query.setObjectName("btnPrimary")
         self.btn_clear = QPushButton("清空历史")
@@ -47,13 +45,9 @@ class HistoryPage(QWidget):
         bar.addWidget(QLabel("快捷范围："))
         bar.addWidget(self.cmb_quick)
         bar.addWidget(QLabel("从"))
-        bar.addWidget(from_prev)
         bar.addWidget(self.dt_from)
-        bar.addWidget(from_next)
         bar.addWidget(QLabel("至"))
-        bar.addWidget(to_prev)
         bar.addWidget(self.dt_to)
-        bar.addWidget(to_next)
         bar.addWidget(self.btn_query)
         bar.addStretch(1)
         bar.addWidget(self.btn_clear)
