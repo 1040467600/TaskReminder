@@ -295,6 +295,13 @@ def clear_history() -> int:
         return c.execute("DELETE FROM reminder_history").rowcount
 
 
+def delete_history_row(history_id: int) -> bool:
+    """删除单条提醒历史记录。返回是否删除成功。"""
+    with db.transaction() as c:
+        cur = c.execute("DELETE FROM reminder_history WHERE id=?", (history_id,))
+        return cur.rowcount > 0
+
+
 # ---------------------------------------------------------------------------
 # 执行人（自动补全用）
 def list_assignees() -> list[str]:

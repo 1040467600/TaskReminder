@@ -110,6 +110,31 @@ QToolTip { background: #1E293B; color: #FFFFFF; border: none; padding: 6px; }
 QListWidget { background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; }
 QListWidget::item { padding: 6px; }
 QListWidget::item:selected { background: #DBEAFE; color: #1E293B; }
+
+/* 日历弹出框 */
+QCalendarWidget QWidget#qt_calendar_navigationbar { background: #F1F5F9; border-bottom: 1px solid #E5E7EB; }
+QCalendarWidget QSpinBox#qt_calendar_yearspinbox,
+QCalendarWidget QComboBox#qt_calendar_monthspinbox {
+    background: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 4px;
+    padding: 4px 8px; font-weight: 600; min-height: 24px;
+}
+QCalendarWidget QSpinBox#qt_calendar_yearspinbox::up-button,
+QCalendarWidget QSpinBox#qt_calendar_yearspinbox::down-button { width: 18px; }
+QCalendarWidget QToolButton#qt_calendar_prevmonth,
+QCalendarWidget QToolButton#qt_calendar_nextmonth {
+    background: transparent; border: none; border-radius: 4px;
+    padding: 4px; min-width: 28px; min-height: 28px;
+}
+QCalendarWidget QToolButton#qt_calendar_prevmonth:hover,
+QCalendarWidget QToolButton#qt_calendar_nextmonth:hover { background: #E5E7EB; }
+QCalendarWidget QTableView {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px;
+    gridline-color: #EEF1F5; selection-background-color: #2563EB; selection-color: #FFFFFF;
+}
+QCalendarWidget QTableView::item { padding: 4px; min-height: 28px; }
+QCalendarWidget QTableView QHeaderView::section {
+    background: #F8FAFC; color: #64748B; border: none; font-weight: 600; padding: 4px;
+}
 """
 
 _DARK = """
@@ -214,6 +239,31 @@ QToolTip { background: #E2E8F0; color: #0F172A; border: none; padding: 6px; }
 QListWidget { background: #1E293B; border: 1px solid #334155; border-radius: 8px; }
 QListWidget::item { padding: 6px; }
 QListWidget::item:selected { background: #1E3A8A; color: #FFFFFF; }
+
+/* 日历弹出框 */
+QCalendarWidget QWidget#qt_calendar_navigationbar { background: #16202F; border-bottom: 1px solid #334155; }
+QCalendarWidget QSpinBox#qt_calendar_yearspinbox,
+QCalendarWidget QComboBox#qt_calendar_monthspinbox {
+    background: #1E293B; border: 1px solid #334155; border-radius: 4px;
+    padding: 4px 8px; font-weight: 600; min-height: 24px; color: #E2E8F0;
+}
+QCalendarWidget QSpinBox#qt_calendar_yearspinbox::up-button,
+QCalendarWidget QSpinBox#qt_calendar_yearspinbox::down-button { width: 18px; }
+QCalendarWidget QToolButton#qt_calendar_prevmonth,
+QCalendarWidget QToolButton#qt_calendar_nextmonth {
+    background: transparent; border: none; border-radius: 4px;
+    padding: 4px; min-width: 28px; min-height: 28px;
+}
+QCalendarWidget QToolButton#qt_calendar_prevmonth:hover,
+QCalendarWidget QToolButton#qt_calendar_nextmonth:hover { background: #334155; }
+QCalendarWidget QTableView {
+    background: #16202F; border: 1px solid #334155; border-radius: 8px;
+    gridline-color: #2C3A4F; selection-background-color: #2563EB; selection-color: #FFFFFF;
+}
+QCalendarWidget QTableView::item { padding: 4px; min-height: 28px; }
+QCalendarWidget QTableView QHeaderView::section {
+    background: #1E293B; color: #94A3B8; border: none; font-weight: 600; padding: 4px;
+}
 """
 
 

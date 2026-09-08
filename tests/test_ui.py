@@ -122,22 +122,24 @@ class TestTasksPage:
         assert "statuses" not in bar.criteria()
 
     def test_search_bar_date_ranges_toggleable(self, qtbot):
-        """日期范围：未启用=不限，启用可选日期，取消即恢复不限。"""
+        """日期范围：日期始终可编辑，复选框限定生效/取消=不限。"""
         from task_reminder.ui.search_bar import SearchBar
         from PyQt6.QtCore import QDate
         bar = SearchBar()
         qtbot.addWidget(bar)
         rng = bar._date_ranges["deadline"]
+        # 日期始终可编辑，不限定时不在 criteria 中
+        assert rng["lo"].isEnabled()
         assert "deadline_from" not in bar.criteria()
-        assert not rng["lo"].isEnabled()
+        # 限定后日期生效
         rng["chk"].setChecked(True)
-        assert rng["lo"].isEnabled() and rng["hi"].isEnabled()
         rng["lo"].setDate(QDate(2026, 9, 1))
         c = bar.criteria()
         assert c.get("deadline_from") == "2026-09-01 00:00"
+        # 取消限定后日期仍在但不在 criteria 中
         rng["chk"].setChecked(False)
+        assert rng["lo"].isEnabled()
         assert "deadline_from" not in bar.criteria()
-        assert not rng["lo"].isEnabled()
 
     def test_search_bar_name_and_content_split(self, qtbot):
         """名称与内容关键词分开发送为不同条件。"""

@@ -89,21 +89,21 @@ class SearchBar(QWidget):
         for r, (label, key) in enumerate([("创建时间：", "created"), ("截止时间：", "deadline")],
                                          start=2):
             grid.addWidget(QLabel(label), r, 0)
-            chk = QCheckBox("启用")
+            chk = QCheckBox("限定")
             grid.addWidget(chk, r, 1)
             lo, hi = QDateEdit(), QDateEdit()
             for w in (lo, hi):
                 w.setCalendarPopup(True)
                 w.setDisplayFormat("yyyy-MM-dd")
                 w.setMinimumDate(QDate(2000, 1, 1))
+                w.setMaximumDate(QDate(2200, 12, 31))
                 w.setDate(QDate.currentDate())
-                w.setEnabled(False)
                 w.dateChanged.connect(self._debounce.start)
             chk.toggled.connect(self._on_range_toggled)
-            grid.addWidget(QLabel("从"), r, 1, Qt.AlignmentFlag.AlignRight)
-            grid.addWidget(lo, r, 2)
-            grid.addWidget(QLabel("至"), r, 2, Qt.AlignmentFlag.AlignRight)
-            grid.addWidget(hi, r, 3)
+            grid.addWidget(QLabel("从"), r, 2, Qt.AlignmentFlag.AlignRight)
+            grid.addWidget(lo, r, 3)
+            grid.addWidget(QLabel("至"), r, 4, Qt.AlignmentFlag.AlignRight)
+            grid.addWidget(hi, r, 5)
             self._date_ranges[key] = {"chk": chk, "lo": lo, "hi": hi}
 
         self.panel.hide()
@@ -125,15 +125,7 @@ class SearchBar(QWidget):
         self._debounce.start()
 
     def _on_range_toggled(self, checked: bool) -> None:
-        for rng in self._date_ranges.values():
-            on = rng["chk"].isChecked()
-            rng["lo"].setEnabled(on)
-            rng["hi"].setEnabled(on)
-            if not on:
-                for w in (rng["lo"], rng["hi"]):
-                    w.blockSignals(True)
-                    w.setDate(w.minimumDate())
-                    w.blockSignals(False)
+        """复选框仅控制是否生效，日期始终可编辑、不重置到 2000 年。"""
         self._debounce.start()
 
     def _emit(self) -> None:
@@ -177,10 +169,8 @@ class SearchBar(QWidget):
             rng = self._date_ranges[key]
             if not rng["chk"].isChecked():
                 continue
-            if rng["lo"].date() != rng["lo"].minimumDate():
-                c[f"{key}_from"] = rng["lo"].date().toString("yyyy-MM-dd") + " 00:00"
-            if rng["hi"].date() != rng["hi"].minimumDate():
-                c[f"{key}_to"] = rng["hi"].date().toString("yyyy-MM-dd") + " 23:59"
+            c[f"{key}_from"] = rng["lo"].date().toString("yyyy-MM-dd") + " 00:00"
+            c[f"{key}_to"] = rng["hi"].date().toString("yyyy-MM-dd") + " 23:59"
         return c
 
     def set_criteria(self, c: dict) -> None:
@@ -196,20 +186,25 @@ class SearchBar(QWidget):
             rng["chk"].blockSignals(True)
             rng["chk"].setChecked(has)
             rng["chk"].blockSignals(False)
-            rng["lo"].setEnabled(has)
-            rng["hi"].setEnabled(has)
-            self._set_range_date(rng["lo"], c.get(f"{key}_from"))
-            self._set_range_date(rng["hi"], c.get(f"{key}_to"), hi=True)
+            if has:
+                self._set_range_date(rng["lo"], c.get(f"{key}_from"))
+                self._set_range_date(rng["hi"], c.get(f"{key}_to"))
+            else:
+                today = QDate.currentDate()
+                for w in (rng["lo"], rng["hi"]):
+                    w.blockSignals(True)
+                    w.setDate(today)
+                    w.blockSignals(False)
         self._update_active_badge()
         self._debounce.start()
 
     @staticmethod
-    def _set_range_date(edit: QDateEdit, value, hi=False) -> None:
+    def _set_range_date(edit: QDateEdit, value) -> None:
         if not value:
-            edit.setDate(edit.minimumDate())
             return
         d = QDate.fromString(str(value)[:10], "yyyy-MM-dd")
-        edit.setDate(d if d.isValid() else edit.minimumDate())
+        if d.isValid():
+            edit.setDate(d)
 
     def reset(self) -> None:
         self.set_criteria({})

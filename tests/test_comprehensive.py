@@ -1083,25 +1083,29 @@ class TestSearchBarAdvanced:
         assert got[0].get("keyword") == "连续输入"
 
     def test_both_date_ranges_independent(self, qtbot):
-        """创建时间和截止时间范围独立开关。"""
+        """创建时间和截止时间范围独立开关（日期始终可编辑，复选框控制是否生效）。"""
         from task_reminder.ui.search_bar import SearchBar
         bar = SearchBar()
         qtbot.addWidget(bar)
-        # 只启用截止时间范围并设置日期
+        # 日期始终可编辑
+        assert bar._date_ranges["deadline"]["lo"].isEnabled()
+        assert bar._date_ranges["created"]["lo"].isEnabled()
+        # 只限定截止时间范围并设置日期
         bar._date_ranges["deadline"]["chk"].setChecked(True)
         bar._date_ranges["deadline"]["lo"].setDate(QDate(2026, 9, 1))
-        assert bar._date_ranges["deadline"]["lo"].isEnabled()
-        assert not bar._date_ranges["created"]["lo"].isEnabled()
         c = bar.criteria()
         assert "deadline_from" in c
         assert "created_from" not in c
-        # 再启用创建时间范围并设置日期
+        # 再限定创建时间范围并设置日期
         bar._date_ranges["created"]["chk"].setChecked(True)
         bar._date_ranges["created"]["lo"].setDate(QDate(2026, 9, 1))
-        assert bar._date_ranges["created"]["lo"].isEnabled()
         c = bar.criteria()
         assert "created_from" in c
         assert "deadline_from" in c
+        # 取消限定不影响日期编辑器可用性
+        bar._date_ranges["deadline"]["chk"].setChecked(False)
+        assert bar._date_ranges["deadline"]["lo"].isEnabled()
+        assert "deadline_from" not in bar.criteria()
 
 
 # ===========================================================================

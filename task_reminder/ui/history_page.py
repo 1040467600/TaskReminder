@@ -1,15 +1,12 @@
-"""提醒历史页：时间范围筛选 + 分页 + 清空。"""
+"""提醒历史页：时间范围筛选 + 分页 + 单条删除 + 清空。"""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-
-from PyQt6.QtCore import QDateTime, Qt
-from PyQt6.QtWidgets import (QComboBox, QDateTimeEdit, QHBoxLayout, QLabel,
-                             QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
-                             QWidget)
+from PyQt6.QtCore import QDate, Qt
+from PyQt6.QtWidgets import (QComboBox, QDateEdit, QHBoxLayout, QHeaderView,
+                             QLabel, QPushButton, QTableWidget, QTableWidgetItem,
+                             QVBoxLayout, QWidget)
 
 from .. import repository
-from ..models import parse
 from .widgets import confirm
 
 QUICK = {"全部": None, "今天": 0, "近7天": 7, "近30天": 30}
@@ -32,13 +29,12 @@ class HistoryPage(QWidget):
         bar = QHBoxLayout()
         self.cmb_quick = QComboBox()
         self.cmb_quick.addItems(list(QUICK.keys()))
-        self.dt_from = QDateTimeEdit()
-        self.dt_to = QDateTimeEdit()
+        self.dt_from = QDateEdit()
+        self.dt_to = QDateEdit()
         for w in (self.dt_from, self.dt_to):
             w.setCalendarPopup(True)
-            w.setDisplayFormat("yyyy-MM-dd HH:mm")
-        self.dt_from.setDateTime(QDateTime(datetime.now().replace(hour=0, minute=0)))
-        self.dt_to.setDateTime(QDateTime(datetime.now()))
+            w.setDisplayFormat("yyyy-MM-dd")
+            w.setDate(QDate.currentDate())
         self.btn_query = QPushButton("查询")
         self.btn_query.setObjectName("btnPrimary")
         self.btn_clear = QPushButton("清空历史")
@@ -54,13 +50,21 @@ class HistoryPage(QWidget):
         bar.addWidget(self.btn_clear)
         layout.addLayout(bar)
 
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["触发时间", "任务内容", "执行人", "截止时间", "响应操作", "响应时间"])
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(
+            ["触发时间", "任务内容", "执行人", "截止时间", "响应操作", "响应时间", "操作"])
         self.table.setEditTriggers(self.table.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(self.table.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(0, 140)
+        self.table.setColumnWidth(2, 80)
+        self.table.setColumnWidth(3, 140)
+        self.table.setColumnWidth(4, 80)
+        self.table.setColumnWidth(5, 140)
+        self.table.setColumnWidth(6, 60)
         layout.addWidget(self.table, 1)
 
         foot = QHBoxLayout()
@@ -78,9 +82,9 @@ class HistoryPage(QWidget):
         self.btn_query.clicked.connect(self._on_query)
         self.btn_clear.clicked.connect(self._on_clear)
         self.cmb_quick.currentIndexChanged.connect(self._on_quick)
-        # 手动改时间：锁定自动范围并立即生效（与快捷下拉行为一致）
-        self.dt_from.dateTimeChanged.connect(self._on_manual_range)
-        self.dt_to.dateTimeChanged.connect(self._on_manual_range)
+        # 手动改时间：锁定自动范围并立即生效
+        self.dt_from.dateChanged.connect(self._on_manual_range)
+        self.dt_to.dateChanged.connect(self._on_manual_range)
         self.btn_prev.clicked.connect(lambda: self._turn(-1))
         self.btn_next.clicked.connect(lambda: self._turn(1))
 
@@ -91,20 +95,19 @@ class HistoryPage(QWidget):
         self.refresh()
 
     def _apply_auto_range(self):
-        """按快捷范围自动计算起止时间（结束时间始终跟随当前时刻，
-        否则页面打开后新触发的提醒会落在范围外而查不到）。"""
+        """按快捷范围自动计算起止时间（结束时间始终跟随当前日期）。"""
         key = self.cmb_quick.currentText()
         days = QUICK[key]
-        now = datetime.now()
+        today = QDate.currentDate()
         if days == 0:
-            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            start = today
         elif days is None:
-            start = datetime(2000, 1, 1)
+            start = QDate(2000, 1, 1)
         else:
-            start = now - timedelta(days=days)
-        for w, dt in ((self.dt_from, start), (self.dt_to, now)):
+            start = today.addDays(-days)
+        for w, d in ((self.dt_from, start), (self.dt_to, today)):
             w.blockSignals(True)
-            w.setDateTime(QDateTime(dt))
+            w.setDate(d)
             w.blockSignals(False)
 
     def _on_quick(self):
@@ -124,8 +127,8 @@ class HistoryPage(QWidget):
     def refresh(self):
         if self._auto_range:
             self._apply_auto_range()
-        start = self.dt_from.dateTime().toString("yyyy-MM-dd HH:mm")
-        end = self.dt_to.dateTime().toString("yyyy-MM-dd HH:mm")
+        start = self.dt_from.date().toString("yyyy-MM-dd") + " 00:00"
+        end = self.dt_to.date().toString("yyyy-MM-dd") + " 23:59"
         logs, total = repository.list_history(self.page_no, self.page_size, start, end)
         self.table.setRowCount(0)
         for lg in logs:
@@ -135,7 +138,7 @@ class HistoryPage(QWidget):
                      lg.deadline, lg.response_text(), lg.responded_at]
             for col, text in enumerate(cells):
                 item = QTableWidgetItem(text)
-                item.setToolTip(text)   # 截断列可悬停看全文
+                item.setToolTip(text)
                 if col == 4:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     if lg.response == "done":
@@ -143,11 +146,23 @@ class HistoryPage(QWidget):
                     elif lg.response in ("", None):
                         item.setForeground(Qt.GlobalColor.gray)
                 self.table.setItem(row, col, item)
+            # 删除按钮
+            btn_del = QPushButton("删除")
+            btn_del.setObjectName("btnDanger")
+            btn_del.setFixedWidth(50)
+            btn_del.clicked.connect(lambda _, hid=lg.id: self._delete_row(hid))
+            self.table.setCellWidget(row, 6, btn_del)
         pages = max(1, (total + self.page_size - 1) // self.page_size)
         self._pages = pages
         self.lbl_info.setText(f"共 {total} 条　第 {self.page_no}/{pages} 页")
         self.btn_prev.setEnabled(self.page_no > 1)
         self.btn_next.setEnabled(self.page_no < pages)
+
+    def _delete_row(self, history_id: int):
+        if not confirm(self, "删除历史记录", "确定删除这一条提醒历史吗？"):
+            return
+        repository.delete_history_row(history_id)
+        self.refresh()
 
     def _on_clear(self):
         if not confirm(self, "清空提醒历史",

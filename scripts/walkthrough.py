@@ -192,14 +192,16 @@ def main() -> int:
     check("状态全取消自动勾回", all(cb.isChecked() for cb in sb.chk_status.values()))
     app.processEvents()
 
-    # 日期范围开关：默认不限 → 启用可选 → 取消恢复不限（#4）
+    # 日期范围：日期始终可编辑，复选框限定生效/取消=不限（#4）
     rng = sb._date_ranges["deadline"]
-    check("日期默认不限", "deadline_from" not in sb.criteria() and not rng["lo"].isEnabled())
+    check("日期默认可编辑", rng["lo"].isEnabled())
+    check("日期默认不限", "deadline_from" not in sb.criteria())
     rng["chk"].setChecked(True)
     rng["lo"].setDate(QDate(datetime.now().year + 1, 1, 1))
-    check("启用后日期生效", sb.criteria().get("deadline_from", "").startswith(str(datetime.now().year + 1)))
+    check("限定后日期生效", sb.criteria().get("deadline_from", "").startswith(str(datetime.now().year + 1)))
     rng["chk"].setChecked(False)
-    check("取消勾选恢复不限（#4）", "deadline_from" not in sb.criteria() and not rng["lo"].isEnabled())
+    check("取消限定恢复不限（#4）", "deadline_from" not in sb.criteria())
+    check("取消限定后日期仍可编辑", rng["lo"].isEnabled())
 
     # 收起高级面板时显示生效条件徽章（#）
     sb.edit_assignee.setText("张三")

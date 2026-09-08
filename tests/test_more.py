@@ -261,7 +261,7 @@ class TestTasksPageOps:
 # ---------------------------------------------------------------------------
 class TestHistoryPage:
     def test_refresh_and_ranges(self, qtbot):
-        from PyQt6.QtCore import QDateTime
+        from PyQt6.QtCore import QDate
         from task_reminder.ui.history_page import HistoryPage
         tid = mk()
         hid = repo.mark_triggered(tid)
@@ -279,6 +279,36 @@ class TestHistoryPage:
         repo.set_history_response(hid, "标记完成")
         page.refresh()
         assert page.table.item(0, 4).text() == "标记完成"
+
+    def test_single_row_delete(self, qtbot):
+        """提醒历史支持单条删除（#1）。"""
+        import task_reminder.ui.history_page as hp
+        from task_reminder.ui.history_page import HistoryPage
+        tid1 = mk(name="历史删除任务1")
+        hid1 = repo.mark_triggered(tid1)
+        tid2 = mk(name="历史删除任务2")
+        hid2 = repo.mark_triggered(tid2)
+        page = HistoryPage()
+        qtbot.addWidget(page)
+        page.refresh()
+        assert page.table.rowCount() == 2
+        # 确认弹窗直接返回 True（patch history_page 模块的 confirm 引用）
+        orig = hp.confirm
+        hp.confirm = lambda *a, **k: True
+        try:
+            page._delete_row(hid1)
+        finally:
+            hp.confirm = orig
+        page.refresh()
+        assert page.table.rowCount() == 1
+        # 确认弹窗返回 False（取消删除）
+        hp.confirm = lambda *a, **k: False
+        try:
+            page._delete_row(hid2)
+        finally:
+            hp.confirm = orig
+        page.refresh()
+        assert page.table.rowCount() == 1
 
 
 # ---------------------------------------------------------------------------
