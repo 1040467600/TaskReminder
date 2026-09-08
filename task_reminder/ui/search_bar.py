@@ -6,6 +6,20 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QGridLayout, QHBox
                              QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget)
 
 
+def make_year_buttons(date_edit: QDateEdit) -> tuple[QPushButton, QPushButton]:
+    """为日期框生成一对翻年按钮（« 上一年 / 下一年 »），与日历内单箭头翻月区分。"""
+    prev = QPushButton("«")
+    nxt = QPushButton("»")
+    for btn in (prev, nxt):
+        btn.setObjectName("btnYear")
+        btn.setFixedWidth(28)
+    prev.setToolTip("上一年")
+    nxt.setToolTip("下一年")
+    prev.clicked.connect(lambda: date_edit.setDate(date_edit.date().addYears(-1)))
+    nxt.clicked.connect(lambda: date_edit.setDate(date_edit.date().addYears(1)))
+    return prev, nxt
+
+
 class SearchBar(QWidget):
     """快速框按任务名称搜索；高级面板提供内容关键词、执行人、状态、日期范围。"""
 
@@ -55,7 +69,7 @@ class SearchBar(QWidget):
         self.panel = QWidget()
         grid = QGridLayout(self.panel)
         grid.setContentsMargins(10, 8, 10, 8)
-        grid.setHorizontalSpacing(10)
+        grid.setHorizontalSpacing(6)
         grid.setVerticalSpacing(6)
 
         # 内容关键词（含备注）
@@ -84,7 +98,8 @@ class SearchBar(QWidget):
         status_row.addStretch(1)
         grid.addLayout(status_row, 1, 3)
 
-        # 日期范围：带启用开关，取消勾选即恢复"不限"
+        # 日期范围：带启用开关，取消勾选即恢复"不限"。
+        # 每个日期框两侧加翻年按钮（« » 双箭头），区别于日历弹出框内的单箭头 ◀ ▶（翻月）。
         self._date_ranges = {}
         for r, (label, key) in enumerate([("创建时间：", "created"), ("截止时间：", "deadline")],
                                          start=2):
@@ -98,12 +113,21 @@ class SearchBar(QWidget):
                 w.setMinimumDate(QDate(2000, 1, 1))
                 w.setMaximumDate(QDate(2200, 12, 31))
                 w.setDate(QDate.currentDate())
+                w.setFixedWidth(130)
                 w.dateChanged.connect(self._debounce.start)
             chk.toggled.connect(self._on_range_toggled)
+            # 起始：«  从  [lo]  »
+            lo_prev, lo_next = make_year_buttons(lo)
             grid.addWidget(QLabel("从"), r, 2, Qt.AlignmentFlag.AlignRight)
-            grid.addWidget(lo, r, 3)
-            grid.addWidget(QLabel("至"), r, 4, Qt.AlignmentFlag.AlignRight)
-            grid.addWidget(hi, r, 5)
+            grid.addWidget(lo_prev, r, 3)
+            grid.addWidget(lo, r, 4)
+            grid.addWidget(lo_next, r, 5)
+            # 结束：至  «  [hi]  »
+            hi_prev, hi_next = make_year_buttons(hi)
+            grid.addWidget(QLabel("至"), r, 6, Qt.AlignmentFlag.AlignRight)
+            grid.addWidget(hi_prev, r, 7)
+            grid.addWidget(hi, r, 8)
+            grid.addWidget(hi_next, r, 9)
             self._date_ranges[key] = {"chk": chk, "lo": lo, "hi": hi}
 
         self.panel.hide()

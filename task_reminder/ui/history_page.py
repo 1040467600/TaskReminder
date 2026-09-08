@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (QComboBox, QDateEdit, QHBoxLayout, QHeaderView,
                              QVBoxLayout, QWidget)
 
 from .. import repository
+from .search_bar import make_year_buttons
 from .widgets import confirm
 
 QUICK = {"全部": None, "今天": 0, "近7天": 7, "近30天": 30}
@@ -35,6 +36,10 @@ class HistoryPage(QWidget):
             w.setCalendarPopup(True)
             w.setDisplayFormat("yyyy-MM-dd")
             w.setDate(QDate.currentDate())
+            w.setFixedWidth(130)
+        # 翻年按钮（« » 双箭头），区别于日历内单箭头 ◀ ▶（翻月）
+        from_prev, from_next = make_year_buttons(self.dt_from)
+        to_prev, to_next = make_year_buttons(self.dt_to)
         self.btn_query = QPushButton("查询")
         self.btn_query.setObjectName("btnPrimary")
         self.btn_clear = QPushButton("清空历史")
@@ -42,9 +47,13 @@ class HistoryPage(QWidget):
         bar.addWidget(QLabel("快捷范围："))
         bar.addWidget(self.cmb_quick)
         bar.addWidget(QLabel("从"))
+        bar.addWidget(from_prev)
         bar.addWidget(self.dt_from)
+        bar.addWidget(from_next)
         bar.addWidget(QLabel("至"))
+        bar.addWidget(to_prev)
         bar.addWidget(self.dt_to)
+        bar.addWidget(to_next)
         bar.addWidget(self.btn_query)
         bar.addStretch(1)
         bar.addWidget(self.btn_clear)
@@ -95,20 +104,28 @@ class HistoryPage(QWidget):
         self.refresh()
 
     def _apply_auto_range(self):
-        """按快捷范围自动计算起止时间（结束时间始终跟随当前日期）。"""
+        """按快捷范围自动计算起止时间。
+
+        - "全部"：不限制起始，UI 上 dt_from 保持当前值（避免日历停在 2000 年），
+          查询时 from 传空字符串。
+        - "今天"/"近N天"：按日期范围计算。
+        """
         key = self.cmb_quick.currentText()
         days = QUICK[key]
         today = QDate.currentDate()
-        if days == 0:
+        if days is None:
+            start = None  # 全部：不设起始限制
+        elif days == 0:
             start = today
-        elif days is None:
-            start = QDate(2000, 1, 1)
         else:
             start = today.addDays(-days)
-        for w, d in ((self.dt_from, start), (self.dt_to, today)):
-            w.blockSignals(True)
-            w.setDate(d)
-            w.blockSignals(False)
+        self.dt_to.blockSignals(True)
+        self.dt_to.setDate(today)
+        self.dt_to.blockSignals(False)
+        if start is not None:
+            self.dt_from.blockSignals(True)
+            self.dt_from.setDate(start)
+            self.dt_from.blockSignals(False)
 
     def _on_quick(self):
         self._auto_range = True
@@ -127,7 +144,11 @@ class HistoryPage(QWidget):
     def refresh(self):
         if self._auto_range:
             self._apply_auto_range()
-        start = self.dt_from.date().toString("yyyy-MM-dd") + " 00:00"
+        # "全部"范围时 start 留空（不限制起始），避免 UI 上 dt_from 停在 2000 年
+        if self._auto_range and self.cmb_quick.currentText() == "全部":
+            start = ""
+        else:
+            start = self.dt_from.date().toString("yyyy-MM-dd") + " 00:00"
         end = self.dt_to.date().toString("yyyy-MM-dd") + " 23:59"
         logs, total = repository.list_history(self.page_no, self.page_size, start, end)
         self.table.setRowCount(0)

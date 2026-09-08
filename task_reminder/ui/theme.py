@@ -54,6 +54,25 @@ QSpinBox:focus, QDateEdit:focus, QDateTimeEdit:focus { border-color: #2563EB; }
 QComboBox::drop-down { border: none; width: 22px; }
 QComboBox QAbstractItemView { background: #FFFFFF; border: 1px solid #E5E7EB; }
 
+/* 日期框：固定宽度、下拉按钮美化 */
+QDateEdit, QDateTimeEdit { min-width: 130px; padding: 6px 6px 6px 10px; }
+QDateEdit::drop-down, QDateTimeEdit::drop-down {
+    subcontrol-origin: border; subcontrol-position: top right; width: 26px;
+    border: none; border-left: 1px solid #E5E7EB; background: transparent;
+}
+QDateEdit::down-button, QDateTimeEdit::down-button {
+    image: none; width: 22px; height: 20px;
+}
+QDateEdit::drop-down:hover, QDateTimeEdit::drop-down:hover { background: #F3F4F6; }
+
+/* 翻年按钮：双箭头 « »，区别于日历内的单箭头 ◀ ▶（翻月） */
+QPushButton#btnYear {
+    background: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 5px;
+    padding: 4px 8px; color: #6B7280; font-weight: 600;
+}
+QPushButton#btnYear:hover { background: #EFF6FF; border-color: #2563EB; color: #2563EB; }
+QPushButton#btnYear:pressed { background: #DBEAFE; }
+
 /* 复选框 / 单选钮指示器（必须显式定义 ::indicator，否则样式表命中后原生圆圈/方框不再绘制） */
 QCheckBox, QRadioButton { background: transparent; spacing: 8px; }
 QCheckBox::indicator, QRadioButton::indicator {
@@ -185,6 +204,25 @@ QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QComboBox:focus,
 QSpinBox:focus, QDateEdit:focus, QDateTimeEdit:focus { border-color: #3B82F6; }
 QComboBox::drop-down { border: none; width: 22px; }
 QComboBox QAbstractItemView { background: #1E293B; border: 1px solid #334155; color: #E2E8F0; }
+
+/* 日期框：固定宽度、下拉按钮美化 */
+QDateEdit, QDateTimeEdit { min-width: 130px; padding: 6px 6px 6px 10px; }
+QDateEdit::drop-down, QDateTimeEdit::drop-down {
+    subcontrol-origin: border; subcontrol-position: top right; width: 26px;
+    border: none; border-left: 1px solid #334155; background: transparent;
+}
+QDateEdit::down-button, QDateTimeEdit::down-button {
+    image: none; width: 22px; height: 20px;
+}
+QDateEdit::drop-down:hover, QDateTimeEdit::drop-down:hover { background: #31405A; }
+
+/* 翻年按钮：双箭头 « »，区别于日历内的单箭头 ◀ ▶（翻月） */
+QPushButton#btnYear {
+    background: #263244; border: 1px solid #3B4A5F; border-radius: 5px;
+    padding: 4px 8px; color: #94A3B8; font-weight: 600;
+}
+QPushButton#btnYear:hover { background: #1E3A8A; border-color: #3B82F6; color: #60A5FA; }
+QPushButton#btnYear:pressed { background: #1E40AF; }
 
 /* 复选框 / 单选钮指示器 */
 QCheckBox, QRadioButton { background: transparent; spacing: 8px; }
