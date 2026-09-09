@@ -127,7 +127,7 @@ def deadline_foreground(task: Task) -> QColor | None:
 
 
 class PaginationBar(QWidget):
-    """分页栏：首页/上一页/页码信息/下一页/末页 + 跳页 + 每页条数。"""
+    """分页栏：上一页 / 页码信息 / 跳页输入框 / 下一页 + 每页条数。"""
 
     page_changed = pyqtSignal(int)          # 当前页
     page_size_changed = pyqtSignal(int)
@@ -136,11 +136,9 @@ class PaginationBar(QWidget):
         super().__init__(parent)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 2, 4, 2)
-        self.btn_first = QPushButton("首页")
         self.btn_prev = QPushButton("上一页")
         self.btn_next = QPushButton("下一页")
-        self.btn_last = QPushButton("末页")
-        for b in (self.btn_first, self.btn_prev, self.btn_next, self.btn_last):
+        for b in (self.btn_prev, self.btn_next):
             b.setObjectName("btnRow")
         self.lbl_info = QLabel("共 0 条")
         self.cmb_size = QToolButton()
@@ -150,7 +148,6 @@ class PaginationBar(QWidget):
         for n in (50, 100, 200, 500):
             self._menu.addAction(f"每页 {n}", lambda n=n: self._set_size(n))
         self.cmb_size.setMenu(self._menu)
-        layout.addWidget(self.btn_first)
         layout.addWidget(self.btn_prev)
         layout.addStretch(1)
         layout.addWidget(self.lbl_info)
@@ -158,19 +155,19 @@ class PaginationBar(QWidget):
         self.spin_page = QSpinBox()
         self.spin_page.setRange(1, 1)
         self.spin_page.setMaximumWidth(70)
+        self.spin_page.setKeyboardTracking(False)
         self.spin_page.setToolTip("输入页码后按回车跳转")
+        # 回车即跳（returnPressed）+ 失焦兜底（editingFinished），双保险确保手动跳页可靠
+        self.spin_page.lineEdit().returnPressed.connect(self._on_jump)
         self.spin_page.editingFinished.connect(self._on_jump)
         layout.addWidget(self.spin_page)
         layout.addWidget(QLabel("页"))
         layout.addStretch(1)
         layout.addWidget(self.btn_next)
-        layout.addWidget(self.btn_last)
         layout.addWidget(self.cmb_size)
         self.page, self.total, self.size = 1, 0, 200
-        self.btn_first.clicked.connect(lambda: self._go(1))
         self.btn_prev.clicked.connect(lambda: self._go(self.page - 1))
         self.btn_next.clicked.connect(lambda: self._go(self.page + 1))
-        self.btn_last.clicked.connect(lambda: self._go(10 ** 9))
 
     def _set_size(self, n: int):
         self.size = n
@@ -178,6 +175,8 @@ class PaginationBar(QWidget):
         self.page_size_changed.emit(n)
 
     def _on_jump(self):
+        # 回车/失焦时先把输入框文本解释为数值，避免取到未提交的旧值
+        self.spin_page.interpretText()
         self._go(self.spin_page.value())
 
     def _go(self, p: int):
@@ -196,7 +195,5 @@ class PaginationBar(QWidget):
         self.spin_page.setValue(page)
         self.spin_page.blockSignals(False)
         self.cmb_size.setText(f"每页 {size}")
-        self.btn_first.setEnabled(page > 1)
         self.btn_prev.setEnabled(page > 1)
         self.btn_next.setEnabled(page < pages)
-        self.btn_last.setEnabled(page < pages)

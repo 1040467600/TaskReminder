@@ -56,20 +56,23 @@ class TestPaginationBar:
         qtbot.addWidget(bar)
         bar.update_info(450, 2, 200)
         assert bar.page == 2
-        # 第 2 页：所有导航按钮均可用
+        # 第 2 页：上一页/下一页均可用
         assert bar.btn_prev.isEnabled()
-        assert bar.btn_first.isEnabled()
         assert bar.btn_next.isEnabled()
         bar.btn_next.click()
         assert bar.page == 3
-        bar.btn_first.click()
+        # 手动跳回第 1 页（输入框跳页）
+        bar.spin_page.setValue(1)
+        bar._on_jump()
         assert bar.page == 1
         bar.update_info(450, bar.page, 200)    # 宿主收到 page_changed 后刷新状态
-        assert not bar.btn_first.isEnabled()   # 第 1 页：首页/上一页禁用
-        assert not bar.btn_prev.isEnabled()
+        assert not bar.btn_prev.isEnabled()    # 第 1 页：上一页禁用
+        assert bar.btn_next.isEnabled()        # 450 条/200 = 3 页，第 1 页下一页可用
         # 越界钳制
         bar._go(99)
         assert bar.page == 3
+        bar.update_info(450, bar.page, 200)
+        assert not bar.btn_next.isEnabled()    # 末页：下一页禁用
 
     def test_page_size_signal(self, qtbot):
         from task_reminder.ui.widgets import PaginationBar

@@ -830,6 +830,55 @@ class TestTasksPageAdvanced:
         page._on_page_size_changed(50)
         assert app_config.get("page_size") == 50
 
+    def test_pager_only_prev_next(self, qtbot):
+        """分页栏仅保留上一页/下一页（首页/末页已删除），点击可翻页。"""
+        for i in range(7):
+            mk(name=f"分页按钮任务{i}")
+        page = self._make_page(qtbot)
+        page.pager.size = 3
+        page.refresh()
+        # 首页/末页按钮已移除
+        assert not hasattr(page.pager, "btn_first")
+        assert not hasattr(page.pager, "btn_last")
+        assert page.page_no == 1 and page.model.rowCount() == 3
+        page.pager.btn_next.click()
+        assert page.page_no == 2 and page.model.rowCount() == 3
+        page.pager.btn_next.click()
+        assert page.page_no == 3 and page.model.rowCount() == 1
+        assert not page.pager.btn_next.isEnabled()   # 末页：下一页禁用
+        page.pager.btn_prev.click()
+        assert page.page_no == 2
+        assert page.pager.btn_prev.isEnabled()
+
+    def test_pager_manual_jump_keyboard(self, qtbot):
+        """手动输入页码：回车即跳、失焦也跳（真实键盘事件回归）。"""
+        for i in range(7):
+            mk(name=f"跳页任务{i}")
+        page = self._make_page(qtbot)
+        page.pager.size = 3
+        page.refresh()
+        page.show()
+        sp = page.pager.spin_page
+        # 键入 3 + 回车 → 第 3 页
+        sp.setFocus()
+        sp.lineEdit().selectAll()
+        qtbot.keyClicks(sp, "3")
+        qtbot.keyClick(sp, Qt.Key.Key_Return)
+        assert page.page_no == 3 and page.model.rowCount() == 1
+        # 失焦兜底：输入框文本为 2，editingFinished 触发（真实环境由焦点移出触发）→ 第 2 页
+        sp.setFocus()
+        sp.lineEdit().selectAll()
+        qtbot.keyClicks(sp, "2")
+        sp.editingFinished.emit()
+        assert page.page_no == 2 and page.model.rowCount() == 3
+        # 键入 3 + 回车再次跳末页，末页下一页应禁用
+        sp.setFocus()
+        sp.lineEdit().selectAll()
+        qtbot.keyClicks(sp, "3")
+        qtbot.keyClick(sp, Qt.Key.Key_Return)
+        assert page.page_no == 3
+        assert not page.pager.btn_next.isEnabled()
+
     def test_empty_hint_shown(self, qtbot):
         """空数据 → '暂无' 提示。"""
         # 不创建任何任务

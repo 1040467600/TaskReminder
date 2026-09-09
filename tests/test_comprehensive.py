@@ -897,11 +897,9 @@ class TestPaginationBarAdvanced:
         bar.update_info(0, 1, 200)
         assert not bar.btn_next.isEnabled()
         assert not bar.btn_prev.isEnabled()
-        assert not bar.btn_first.isEnabled()
-        assert not bar.btn_last.isEnabled()
 
     def test_last_page(self, qtbot):
-        """末页 → 下一页/末页按钮禁用。"""
+        """末页 → 下一页禁用、上一页可用。"""
         from task_reminder.ui.widgets import PaginationBar
         bar = PaginationBar()
         qtbot.addWidget(bar)
@@ -909,9 +907,7 @@ class TestPaginationBarAdvanced:
         bar._go(2)  # 到末页
         bar.update_info(400, bar.page, 200)
         assert not bar.btn_next.isEnabled()
-        assert not bar.btn_last.isEnabled()
         assert bar.btn_prev.isEnabled()
-        assert bar.btn_first.isEnabled()
 
     def test_page_info_text(self, qtbot):
         """分页信息文本包含总条数和页码。"""
