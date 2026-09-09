@@ -275,16 +275,23 @@ class MainWindow(QMainWindow):
 
     def _restore_window_state(self):
         import json
-        raw = app_config.get("window_state", "")
-        if raw:
+        data = app_config.get("window_state", "")
+        # app_config.get() 内部已做 json 解析，正常直接得到 dict；
+        # 仅对字符串形态（历史/手工写入）再解析一次，切勿对 dict 二次 json.loads
+        # （会抛 TypeError 被吞掉，导致窗口几何永远不恢复）。
+        if isinstance(data, str) and data:
             try:
-                s = json.loads(raw)
-                self.setGeometry(s.get("x", 120), s.get("y", 120),
-                                 max(800, s.get("w", 1000)), max(600, s.get("h", 680)))
-                if s.get("maximized"):
+                data = json.loads(data)
+            except (ValueError, TypeError):
+                data = None
+        if isinstance(data, dict) and data:
+            try:
+                self.setGeometry(data.get("x", 120), data.get("y", 120),
+                                 max(800, data.get("w", 1000)), max(600, data.get("h", 680)))
+                if data.get("maximized"):
                     self.setWindowState(Qt.WindowState.WindowMaximized)
                 return
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, AttributeError):
                 pass
         self.resize(1000, 680)
 

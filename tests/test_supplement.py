@@ -1188,10 +1188,38 @@ class TestMainWindowAdvanced:
         assert not win.isVisible()
 
     def test_restore_window_state(self, qtbot):
-        """窗口状态恢复 → 不崩溃，几何使用默认或保存值。"""
+        """回归：保存的窗口几何在新窗口启动时必须真正恢复。
+
+        app_config.get() 内部已 json 解析返回 dict，_restore_window_state
+        不得二次 json.loads（旧代码抛 TypeError 被吞掉，几何永远落默认值）。
+        """
+        import json as _json
         from task_reminder.ui.main_window import MainWindow
-        # 清空 window_state，使用默认几何（restore 路径对已 dict 化的值会兜底为默认）
+        # 模拟 _quit() 落库形态：JSON 字符串
+        app_config.set("window_state", _json.dumps(
+            {"x": 80, "y": 90, "w": 1100, "h": 750, "maximized": False}))
+        win = MainWindow()
+        qtbot.addWidget(win)
+        g = win.geometry()
+        assert g.width() == 1100 and g.height() == 750
+        assert g.x() == 80 and g.y() == 90
+
+    def test_restore_window_state_default(self, qtbot):
+        """无保存状态时使用默认几何（不崩溃）。"""
+        from task_reminder.ui.main_window import MainWindow
         db.get_conn().execute("DELETE FROM user_settings WHERE key=?", ("window_state",))
+        db.get_conn().commit()
+        win = MainWindow()
+        qtbot.addWidget(win)
+        g = win.geometry()
+        assert g.width() >= 800 and g.height() >= 600
+
+    def test_restore_window_state_corrupt(self, qtbot):
+        """损坏的状态值兜底为默认几何，不崩溃。"""
+        from task_reminder.ui.main_window import MainWindow
+        db.get_conn().execute(
+            "INSERT INTO user_settings(key,value) VALUES('window_state',?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value", ("{broken",))
         db.get_conn().commit()
         win = MainWindow()
         qtbot.addWidget(win)
