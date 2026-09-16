@@ -133,14 +133,29 @@ class Notifier(QObject):
 
     def notify(self, task: Task, history_id: int) -> None:
         """入队一条提醒：先声音/气泡，弹窗由 pump 逐个展示。"""
-        self._queue.append((task, history_id))
+        self.notify_batch([(task, history_id)])
+
+    def notify_batch(self, items: list[tuple[Task, int]]) -> None:
+        """批量入队一批提醒：声音只响一次、托盘只弹一条聚合气泡。
+
+        避免积压数百条到期任务时，声音/气泡在主线程循环轰炸导致界面卡死。
+        弹窗仍由 pump 逐个展示（前一个关闭后再弹下一个）。
+        """
+        if not items:
+            return
+        self._queue.extend(items)
         self._play_sound()
         if self.tray is not None:
             active = QApplication.activeWindow()
             if active is None or active.isMinimized():
+                first = items[0][0]
+                if len(items) == 1:
+                    body = f"{first.summary()}\n执行人：{first.assignee}　截止：{first.deadline}"
+                else:
+                    body = (f"{first.summary()} 等 {len(items)} 条任务到期\n"
+                            f"执行人：{first.assignee}　截止：{first.deadline}")
                 self.tray.showMessage(
-                    "任务提醒",
-                    f"{task.summary()}\n执行人：{task.assignee}　截止：{task.deadline}",
+                    "任务提醒", body,
                     QSystemTrayIcon.MessageIcon.Information, 8000,
                 )
         self._emit()

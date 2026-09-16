@@ -139,9 +139,13 @@ class TasksPage(QWidget):
         self.empty_hint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.view.viewport().installEventFilter(self)
 
-        # 分页（初始条数取设置页的配置）
+        # 分页（初始条数取设置页的配置；损坏值兜底为 200，不因脏配置崩溃）
         self.pager = PaginationBar()
-        self.pager.size = max(1, int(app_config.get("page_size", 200)))
+        try:
+            page_size = int(app_config.get("page_size", 200))
+        except (TypeError, ValueError):
+            page_size = 200
+        self.pager.size = max(1, page_size)
         self.pager.page_changed.connect(self._on_page_changed)
         self.pager.page_size_changed.connect(self._on_page_size_changed)
         tv.addWidget(self.pager)

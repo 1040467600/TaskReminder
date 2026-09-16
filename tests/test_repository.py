@@ -6,14 +6,18 @@ from datetime import datetime, timedelta
 import pytest
 
 from task_reminder import repository as repo
-from task_reminder.models import TaskStatus, fmt
+from task_reminder.models import TaskStatus, fmt, parse
 
 
 def mk(name="编写季度报告", assignee="张三", content="<b>重要</b>事项",
        deadline=None, reminder=None, status=TaskStatus.NOT_STARTED, notes=""):
     now = datetime.now()
     deadline = deadline or fmt(now + timedelta(days=1))
-    reminder = reminder or fmt(now + timedelta(hours=2))
+    if reminder is None:
+        # 提醒默认取"截止前 2 小时"：显式传入的截止时间可能早于 now+2h
+        # （硬编码日期随时间流逝过期），相对截止推导避免校验拒绝。
+        dl = parse(deadline) or (now + timedelta(days=1))
+        reminder = fmt(dl - timedelta(hours=2))
     return repo.add_task(name, assignee, content, deadline, reminder, status, notes)
 
 

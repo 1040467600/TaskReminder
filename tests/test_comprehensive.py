@@ -633,13 +633,13 @@ class TestReminderService:
         app_config.set("poll_interval", 5)
 
     def test_tick_emits_due_signal(self, qtbot):
-        """tick 触发到期任务的 task_due 信号。"""
+        """tick 触发到期任务的 task_due_batch 信号。"""
         from task_reminder.reminder_service import ReminderService
         past = datetime.now() - timedelta(minutes=5)
         tid = mk(reminder=fmt(past))
         svc = ReminderService()
         got = []
-        svc.task_due.connect(lambda t, hid: got.append((t.id, hid)))
+        svc.task_due_batch.connect(lambda pairs: got.extend((t.id, hid) for t, hid in pairs))
         svc.tick()
         assert len(got) == 1
         assert got[0][0] == tid
@@ -652,7 +652,7 @@ class TestReminderService:
         mk(reminder=future)
         svc = ReminderService()
         got = []
-        svc.task_due.connect(lambda t, hid: got.append((t, hid)))
+        svc.task_due_batch.connect(lambda pairs: got.extend(pairs))
         svc.tick()
         assert len(got) == 0
 
@@ -1495,8 +1495,9 @@ class TestRepositoryAdvanced:
 
     def test_find_duplicate_no_match(self):
         """无重复 → None。"""
-        mk(name="唯一任务", assignee="张三", deadline="2026-09-10 10:00")
-        assert repo.find_duplicate("其他任务", "张三", "2026-09-10 10:00") is None
+        dl = fmt(datetime.now() + timedelta(days=3))   # 动态未来时间，防日期过期
+        mk(name="唯一任务", assignee="张三", deadline=dl)
+        assert repo.find_duplicate("其他任务", "张三", dl) is None
 
     def test_list_history_pagination(self):
         """历史分页：多页返回正确数量。"""

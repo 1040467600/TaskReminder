@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 
-from PyQt6.QtCore import QDateTime, Qt
-from PyQt6.QtGui import QFont, QTextCharFormat
-from PyQt6.QtWidgets import (QComboBox, QCompleter, QDateTimeEdit, QDialog, QFormLayout,
-                             QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox,
-                             QPlainTextEdit, QPushButton, QTextEdit, QToolButton,
-                             QVBoxLayout, QWidget)
+from PyQt6.QtCore import QDateTime, QUrl, Qt
+from PyQt6.QtGui import QDesktopServices, QFont, QPixmap, QTextCharFormat
+from PyQt6.QtWidgets import (QComboBox, QCompleter, QDateTimeEdit, QDialog, QFileDialog,
+                             QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+                             QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
+                             QScrollArea, QTextEdit, QToolButton, QVBoxLayout, QWidget)
 
 from .. import repository
 from ..models import CONTENT_MAX, NAME_MAX, NAME_MIN, NOTES_MAX, Task, TaskStatus, plain_len
@@ -119,6 +120,11 @@ class TaskDialog(QDialog):
 
         layout.addLayout(form)
 
+        # 佐证图片（任务完成凭证，可多张；新建时先暂存路径，保存成功后入库）
+        self._pending_images: list[str] = []   # 新建/编辑后尚未入库的本地图片路径
+        self._images = []                       # 已入库的 TaskImage
+        layout.addWidget(self._build_images_box())
+
         # 校验提示
         self.lbl_error = QLabel("")
         self.lbl_error.setStyleSheet("color: #DC2626;")
@@ -145,6 +151,152 @@ class TaskDialog(QDialog):
             self._load(editing_task)
         else:
             self._default_times()
+
+    # ------------------------------------------------------------------
+    # 佐证图片
+    def _build_images_box(self) -> QWidget:
+        box = QGroupBox("佐证图片（任务完成凭证，可添加多张，支持 jpg/png/gif/bmp/webp）")
+        outer = QVBoxLayout(box)
+        outer.setSpacing(6)
+        row = QHBoxLayout()
+        self.lbl_images_count = QLabel("共 0 张")
+        self.lbl_images_count.setObjectName("tagNote")
+        btn_add = QPushButton("＋ 添加图片")
+        btn_add.setObjectName("btnRow")
+        btn_add.clicked.connect(self._pick_images)
+        row.addWidget(self.lbl_images_count)
+        row.addStretch(1)
+        row.addWidget(btn_add)
+        outer.addLayout(row)
+
+        self.images_scroll = QScrollArea()
+        self.images_scroll.setWidgetResizable(True)
+        self.images_scroll.setFixedHeight(150)
+        self.images_host = QWidget()
+        self.images_grid = QGridLayout(self.images_host)
+        self.images_grid.setContentsMargins(2, 2, 2, 2)
+        self.images_grid.setSpacing(8)
+        self.images_scroll.setWidget(self.images_host)
+        outer.addWidget(self.images_scroll)
+        return box
+
+    def _reload_images(self):
+        """重建缩略图网格（已入库 + 待保存）。"""
+        while self.images_grid.count():
+            w = self.images_grid.takeAt(0).widget()
+            if w is not None:
+                w.deleteLater()
+        entries = [("saved", im) for im in self._images]
+        entries += [("pending", p) for p in self._pending_images]
+        self.lbl_images_count.setText(f"共 {len(entries)} 张")
+        cols = 4
+        for i, (kind, ref) in enumerate(entries):
+            path = str(repository.image_path(ref)) if kind == "saved" else ref
+            cell = self._image_cell(kind, ref, path)
+            self.images_grid.addWidget(cell, i // cols, i % cols)
+
+    def _image_cell(self, kind: str, ref, path: str) -> QWidget:
+        cell = QWidget()
+        v = QVBoxLayout(cell)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(2)
+        thumb = QLabel()
+        thumb.setFixedSize(108, 84)
+        thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        thumb.setStyleSheet("border:1px solid #CBD5E1; border-radius:4px; background:#F8FAFC;")
+        pm = QPixmap(path)
+        name = ref.filename if kind == "saved" else Path(ref).name
+        if not pm.isNull():
+            thumb.setPixmap(pm.scaled(104, 80, Qt.AspectRatioMode.KeepAspectRatio,
+                                      Qt.TransformationMode.SmoothTransformation))
+        else:
+            thumb.setText("无法预览")
+        thumb.setToolTip(name)
+        v.addWidget(thumb)
+        btns = QHBoxLayout()
+        btns.setContentsMargins(0, 0, 0, 0)
+        btns.setSpacing(2)
+        b_open = QPushButton("打开")
+        b_save = QPushButton("另存")
+        b_del = QPushButton("删除")
+        for b in (b_open, b_save, b_del):
+            b.setObjectName("btnRow")
+            b.setFixedHeight(20)
+        b_open.clicked.connect(lambda: self._open_image(path))
+        b_save.clicked.connect(lambda: self._download_image(path, name))
+        b_del.clicked.connect(lambda: self._remove_image(kind, ref))
+        btns.addWidget(b_open)
+        btns.addWidget(b_save)
+        btns.addWidget(b_del)
+        v.addLayout(btns)
+        return cell
+
+    def _pick_images(self):
+        """多选导入图片；校验格式/大小后加入待保存列表。"""
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "选择佐证图片（可多选）", "",
+            "图片文件 (*.jpg *.jpeg *.png *.gif *.bmp *.webp)")
+        added = 0
+        for p in paths:
+            src = Path(p)
+            if p in self._pending_images:
+                continue
+            if src.suffix.lower() not in repository.IMAGE_EXTS:
+                QMessageBox.warning(self, "图片格式不支持", f"{src.name} 不是受支持的图片格式。")
+                continue
+            try:
+                size = src.stat().st_size
+            except OSError:
+                QMessageBox.warning(self, "图片无法读取", f"{src.name} 文件无法访问。")
+                continue
+            if size > repository.IMAGE_MAX_BYTES:
+                QMessageBox.warning(self, "图片过大",
+                                    f"{src.name} 超过 "
+                                    f"{repository.IMAGE_MAX_BYTES // 1024 // 1024}MB 上限。")
+                continue
+            self._pending_images.append(p)
+            added += 1
+        if added:
+            self._reload_images()
+
+    @staticmethod
+    def _open_image(path: str):
+        """用系统默认图片查看器打开（下载/查看）。"""
+        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+
+    def _download_image(self, path: str, suggested_name: str):
+        """另存为：把图片下载到用户指定位置。"""
+        dest, _ = QFileDialog.getSaveFileName(self, "图片另存为", suggested_name,
+                                              "图片文件 (*.jpg *.jpeg *.png *.gif *.bmp *.webp)")
+        if not dest:
+            return
+        try:
+            import shutil
+            shutil.copy2(path, dest)
+        except OSError as e:
+            QMessageBox.warning(self, "保存失败", f"图片另存失败：{e}")
+            return
+        QMessageBox.information(self, "保存成功", f"图片已保存到：\n{dest}")
+
+    def _remove_image(self, kind: str, ref):
+        """删除图片：已入库的立即删记录+文件；待保存的移出暂存列表。"""
+        if kind == "saved":
+            if repository.delete_task_image(ref.id):
+                self._images = [im for im in self._images if im.id != ref.id]
+        else:
+            self._pending_images = [p for p in self._pending_images if p != ref]
+        self._reload_images()
+
+    def _save_pending_images(self) -> list[str]:
+        """保存成功后把待入库图片复制入库。返回错误信息列表。"""
+        errors = []
+        for src in self._pending_images:
+            try:
+                repository.add_task_image(self.task_id, src)
+            except Exception as e:
+                errors.append(f"{Path(src).name}：{e}")
+        self._pending_images.clear()
+        return errors
 
     # ------------------------------------------------------------------
     def _default_times(self):
@@ -233,6 +385,8 @@ class TaskDialog(QDialog):
         self.dt_reminder.setDateTime(QDateTime.fromString(t.reminder_time, "yyyy-MM-dd HH:mm"))
         self.cmb_status.setCurrentText(t.status)
         self.edit_notes.setPlainText(t.notes or "")
+        self._images = repository.list_task_images(t.id)
+        self._reload_images()
         self._validate()
 
     # ------------------------------------------------------------------
@@ -329,7 +483,12 @@ class TaskDialog(QDialog):
         except repository.ValidationError as e:
             QMessageBox.warning(self, "校验失败", str(e))
             return
+        # 任务已落库（拿到 task_id），把本次新选的佐证图片复制入库
+        errors = self._save_pending_images()
         self.accept()
+        if errors:
+            QMessageBox.warning(self, "部分图片未保存",
+                                "以下图片保存失败：\n" + "\n".join(errors))
 
     @classmethod
     def edit(cls, parent, task: Task) -> bool:

@@ -117,7 +117,9 @@ def main() -> int:
     page.show()
     app.processEvents()
     for i in range(5):
-        repo.add_task(f"任务{i:02d}", f"同学{i%2}", "", "2026-09-15 12:00",
+        # 截止统一取 30 天后，保证提醒（未来 1~5 天）始终早于截止，避免硬编码日期失效
+        repo.add_task(f"任务{i:02d}", f"同学{i%2}", "",
+                      (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M"),
                       (datetime.now() + timedelta(days=i + 1)).strftime("%Y-%m-%d %H:%M"))
     page.refresh()
     check("刷新加载数据", page.model.rowCount() == 8, f"实际 {page.model.rowCount()}")
@@ -296,9 +298,10 @@ def main() -> int:
     win.settings_page.cmb_theme.setCurrentIndex(1)
     check("深色主题应用", "0F172A" in QApplication.instance().styleSheet())
 
-    # 提醒全链路：service.tick → task_due → notifier
+    # 提醒全链路：service.tick → task_due_batch → notifier
     past2 = (datetime.now() - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M")
-    rid = repo.add_task("链路任务", "孙七", "", "2026-09-21 12:00", past2)
+    dl2 = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
+    rid = repo.add_task("链路任务", "孙七", "", dl2, past2)
     win.service.tick()
     app.processEvents()
     check("tick 触发入队/弹窗", repo.get_task(rid).triggered == 1)

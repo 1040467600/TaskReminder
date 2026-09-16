@@ -354,7 +354,8 @@ class TestMainWindow:
         due = repo.due_for_reminder()
         task = next(t for t in due if t.id == tid)
         hid = repo.mark_triggered(tid)
-        win._on_task_due(task, hid)
+        win._on_task_due_batch([(task, hid)])
+        qtbot.wait(250)  # 等待页面刷新防抖（150ms singleShot）
         win.notifier.pump()
 
         # 历史页无需切页即已包含本次提醒（结束时间自动跟随当前时刻）

@@ -97,6 +97,13 @@ def ensure_schema(c: sqlite3.Connection) -> None:
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL DEFAULT ''
         );
+        CREATE TABLE IF NOT EXISTS task_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            filename TEXT NOT NULL DEFAULT '',
+            stored_name TEXT NOT NULL DEFAULT '',
+            added_at TEXT NOT NULL DEFAULT ''
+        );
         """
     )
     # v1.0 → v2.0 迁移：增量列
@@ -125,6 +132,7 @@ def ensure_schema(c: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_tasks_name ON tasks (name);
         CREATE INDEX IF NOT EXISTS idx_history_triggered ON reminder_history (triggered_at);
         CREATE INDEX IF NOT EXISTS idx_history_task ON reminder_history (task_id);
+        CREATE INDEX IF NOT EXISTS idx_images_task ON task_images (task_id);
         """
     )
     c.commit()

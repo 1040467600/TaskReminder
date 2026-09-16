@@ -1019,3 +1019,168 @@ $env:QT_QPA_PLATFORM="offscreen"
 | 未知/非法输入 | 6 | models, repository, widgets |
 | 边界值(恰好/空) | 8 | models, repository, notifier |
 | 性能基准 | 5 | repository, backup |
+
+---
+
+## 9. 第三轮补充测试用例（基于真实回归 bug 的经验）
+
+> **背景**：第二/三轮测试与 v2.0.10、v2.0.11 两个真实 bug 暴露了两类测试盲区：
+> 1. **持久化"假测试"**：v2.0.10 窗口状态恢复 bug（`app_config.get()` 已返回 dict，代码又二次 `json.loads` 抛异常被吞）长期没被发现，因为当时的测试**清空了配置只断言默认值**，没有走"保存→重启→恢复"闭环。
+> 2. **UI 交互"假测试"**：v2.0.11 手动跳页不可靠，因为只测了"信号是否发射"，没有用真实键盘/鼠标事件断言"数据内容真的变了"。
+>
+> 本轮用例据此设计，三条铁律：
+> - **持久化必须测往返**：写入配置 → **新建 widget 实例**（模拟重启）→ 断言 UI 反映保存值，不允许只断言默认值。
+> - **UI 必须用真实事件**：`qtbot.keyClicks/keyClick/mouseClick` 端到端，断言锚点是**表格首行内容/控件值/DB 状态**，而非信号是否发射。
+> - **负向必须固化期望**：损坏配置/非法输入要明确断言"兜底默认值 + 不崩溃"，而不是改数据让用例变绿。
+
+### 9.1 配置持久化往返（Persistence Round-Trip）— 对应 v2.0.10 窗口状态 bug
+
+#### 9.1.1 TestConfigPersistenceRoundTrip（12 用例）
+
+> 通用模式：操作/落库 → **新建对应页面实例（不复用旧实例）** → 断言新实例 UI 状态。
+
+| # | 用例名 | 测试目的 | 操作/输入 | 预期（新实例） | 验证方法 |
+|---|---|---|---|---|---|
+| 1 | `test_window_geometry_roundtrip` | 窗口几何重启恢复 | set 窗口 1100×750@(80,90) | 新 MainWindow 几何一致 | `new_win.geometry()` w/h/x/y 精确断言 |
+| 2 | `test_window_maximized_roundtrip` | 最大化状态恢复 | maximized=True 落库 | 新窗口 windowState 含最大化 | `isMaximized()` 为 True |
+| 3 | `test_sort_state_roundtrip` | 排序键/方向恢复 | 按 deadline 升序排序 | 新 TasksPage sort_key/dir 一致 | `page.sort_key=='deadline'` 且数据按截止升序 |
+| 4 | `test_column_order_roundtrip` | 列拖拽顺序恢复 | 拖拽改列序 | 新实例视觉列序一致 | 遍历 `header.visualIndex` 比对 column_ids |
+| 5 | `test_column_visibility_roundtrip` | 列隐藏状态恢复 | 隐藏某列 | 新实例该列仍隐藏 | `header.isSectionHidden(i)` 为 True |
+| 6 | `test_column_width_roundtrip` | 列宽恢复 | 调列宽为 200 | 新实例该列宽≈200 | `header.sectionSize(i) >= 190` |
+| 7 | `test_page_size_roundtrip` | 每页条数恢复 | 设每页 50 | 新实例 `pager.size==50` 且每页 50 行 | size 与首查 page_size 一致 |
+| 8 | `test_theme_roundtrip` | 主题重启应用 | 切深色 | 新 MainWindow 应用深色 | app_config theme=='dark' 且样式含深色标记 |
+| 9 | `test_sound_enabled_roundtrip` | 声音开关恢复 | 关声音 | 新实例 sound_enabled==False | `app_config.get('sound_enabled') is False` |
+| 10 | `test_sound_file_roundtrip` | 自定义音效路径恢复 | 设自定义 wav 路径 | 新实例读取该路径 | `app_config.get('sound_file')==路径` |
+| 11 | `test_poll_interval_roundtrip` | 轮询间隔生效 | 设间隔 10s | 新 ReminderService 间隔=10s | service 定时器间隔配置一致 |
+| 12 | `test_tray_close_roundtrip` | 关闭行为开关恢复 | 设 tray_close=False | 新实例 closeEvent 直接接受 | closeEvent 后 `ev.isAccepted()` 为 True |
+
+#### 9.1.2 TestConfigCorruptFallback（6 用例）
+
+> 损坏/越界配置必须兜底默认值且不崩溃（防止重蹈"异常被吞→静默失效"）。
+
+| # | 用例名 | 测试目的 | 损坏输入 | 预期 | 验证方法 |
+|---|---|---|---|---|---|
+| 1 | `test_window_state_corrupt_fallback` | 窗口状态坏 JSON | `"{broken"` | 默认几何 1000×680 | 新 MainWindow w>=800 h>=600 不崩溃 |
+| 2 | `test_sort_state_corrupt_fallback` | 排序状态坏 JSON | `"{bad"` | 默认排序 created_at/desc | `page.sort_key=='created_at'` |
+| 3 | `test_column_state_corrupt_fallback` | 列配置坏 JSON | `"[oops"` | 默认列序与可见性 | 列数==COLUMNS 数，name 列可见 |
+| 4 | `test_page_size_invalid_fallback` | 每页条数非法 | 0 / 负数 / 非数字 | 兜底可用值，不崩 | refresh 不抛异常，size>=1 |
+| 5 | `test_poll_interval_out_of_range_clamp` | 轮询越界钳制 | 0 / 999 | 钳到 1-60 区间 | 生效值在 [1,60] |
+| 6 | `test_theme_unknown_value_fallback` | 未知主题 | `"purple"` | 不崩溃、样式有效 | apply_theme 不抛异常 |
+
+### 9.2 真实交互事件（Real Event E2E）— 对应 v2.0.11 手动跳页 bug
+
+> 统一用 `qtbot.keyClicks()/keyClick()/mouseClick()`，断言锚点是**内容/数据**。
+
+#### 9.2.1 TestPaginationRealInteraction（7 用例）
+
+| # | 用例名 | 测试目的 | 真实操作 | 预期内容变化 | 验证方法 |
+|---|---|---|---|---|---|
+| 1 | `test_prev_next_changes_rows` | 上下页切换数据 | mouseClick 下一页×2 | 首行任务名变化 | 记录第1页首行，翻页后首行不同 |
+| 2 | `test_keyboard_enter_jump` | 回车跳页 | keyClicks 页码 + keyClick Return | 跳到目标页 | page_no 与首行锚点一致 |
+| 3 | `test_spinbox_arrow_buttons` | spinbox 上下箭头 | mouseClick spinbox 上下箭头 | 页码±1 | page_no 相应增减 |
+| 4 | `test_page_size_menu_click` | 每页条数菜单 | mouseClick 菜单"每页 2" | 每页行数变 2 | `model.rowCount()==2` |
+| 5 | `test_first_page_prev_disabled` | 首页边界 | 第1页 | 上一页禁用 | `not btn_prev.isEnabled()` |
+| 6 | `test_last_page_next_disabled` | 末页边界 | 翻到末页 | 下一页禁用 | `not btn_next.isEnabled()` |
+| 7 | `test_jump_then_refresh_keeps_page` | 跳页后刷新保持 | 跳第2页→增删任务 refresh | 仍在合理页码不空 | refresh 后 rowCount>0 |
+
+#### 9.2.2 TestSearchBarRealInteraction（4 用例）
+
+| # | 用例名 | 真实操作 | 预期 | 验证方法 |
+|---|---|---|---|---|
+| 1 | `test_keyword_enter_filters` | 关键词框 keyClicks + 回车 | 列表只含匹配项 | 所有行名称含关键词 |
+| 2 | `test_clear_button_restores` | 点清空按钮 | 列表恢复全量 | 行数回到 total |
+| 3 | `test_status_checkbox_click_filters` | mouseClick 状态复选框 | 只显示该状态 | 各行状态匹配勾选 |
+| 4 | `test_keyword_live_change` | 改关键词重新搜索 | 结果随词变化 | 两次搜索首行不同 |
+
+#### 9.2.3 TestTaskDialogRealInteraction（4 用例）
+
+> 模态框通过直接操作子控件 + 调用槽函数验证落库，避免真实 exec 阻塞。
+
+| # | 用例名 | 真实操作 | 预期 | 验证方法 |
+|---|---|---|---|---|
+| 1 | `test_name_field_saved` | 名称框 keyClicks + 保存 | DB 名称正确 | `get_task().name==输入` |
+| 2 | `test_status_combo_change` | 状态下拉选"进行中" | 保存状态=进行中 | `task.status=='进行中'` |
+| 3 | `test_assignee_completer` | 执行人框输入触发补全 | completer 有候选 | completer 模型 rowCount>0 |
+| 4 | `test_deadline_date_edit` | 日期控件改截止日 | deadline 落库变化 | 解析后日期==所选 |
+
+#### 9.2.4 TestSettingsPageRealInteraction（4 用例）
+
+| # | 用例名 | 真实操作 | 预期 | 验证方法 |
+|---|---|---|---|---|
+| 1 | `test_page_size_spin_change` | spinbox 改 100 | 信号+落库 | `app_config.get('page_size')==100` |
+| 2 | `test_sound_checkbox_toggle` | mouseClick 声音复选框 | sound_enabled 翻转落库 | get 值翻转 |
+| 3 | `test_theme_combo_select_dark` | 下拉选深色 | theme_changed + 落库 | `app_config.get('theme')=='dark'` |
+| 4 | `test_poll_spin_clamped` | spin 输入 999 | 钳到上限 60 | 落库值<=60 |
+
+### 9.3 信号链路端到端（Signal Chain E2E）
+
+#### 9.3.1 TestReminderFlowE2E（6 用例）
+
+| # | 用例名 | 测试目的 | 触发链路 | 预期（DB/UI 终态） | 验证方法 |
+|---|---|---|---|---|---|
+| 1 | `test_due_creates_dialog_and_log` | 到期全链路 | tick 到点 | 弹窗+历史记录+响应位 | history 表有记录，`_dialog` 存在 |
+| 2 | `test_done_updates_status` | 点完成 | 弹窗 `_respond('done')` | 任务已完成 | `task.status=='已完成'` 且 log.response='done' |
+| 3 | `test_snooze_advances_reminder` | 稍后提醒 | `_respond('snooze',15)` | reminder_time 后移≥14min | 新旧 reminder 差值断言 |
+| 4 | `test_close_keeps_status` | 关闭弹窗 | `_respond('close')` | 状态不变 | status 仍未开始，response='close' |
+| 5 | `test_same_day_no_duplicate` | 同日去重 | 同条 tick 两次 | 不重复弹窗/记录 | history 同 task 仅 1 条当日 |
+| 6 | `test_cross_day_reset_retrigger` | 跨天重置 | mock 到次日 tick | triggered 归零可再触发 | `t.triggered==0` 后再次入队 |
+
+#### 9.3.2 TestDataChangeChain（3 用例）
+
+| # | 用例名 | 测试目的 | 操作 | 预期 | 验证方法 |
+|---|---|---|---|---|---|
+| 1 | `test_filter_updates_statusbar` | 搜索→状态栏 | 搜索过滤 | 状态栏条数=筛选数 | `"共 N 条"` N 与结果一致 |
+| 2 | `test_complete_refreshes_dashboard` | 完成→看板 | set_status 已完成 | 看板已完成+1 | dashboard stats 变化 |
+| 3 | `test_delete_last_on_page_backs_off` | 删末页末条 | 末页删到空 | 自动回退上一页不空白 | refresh 后 page_no 回退且有行 |
+
+### 9.4 数据完整性（Data Integrity）
+
+#### 9.4.1 TestBackupRestoreIntegrity（3 用例）
+
+| # | 用例名 | 测试目的 | 操作 | 预期 | 验证方法 |
+|---|---|---|---|---|---|
+| 1 | `test_restore_all_fields_match` | 逐字段一致 | 建含富文本/各状态任务→备份→清库→恢复 | 逐字段相等 | name/assignee/content/deadline/reminder/status/notes 全比对 |
+| 2 | `test_restore_history_with_response` | 历史含响应恢复 | mark_triggered + 响应→备份→恢复 | 历史记录及 response 完整 | list_history 条数与 response 字段一致 |
+| 3 | `test_restore_settings` | 设置随备份恢复 | 改设置→备份→清库→恢复 | 设置项回读一致 | 关键设置项 get 值比对 |
+
+#### 9.4.2 TestExcelIntegrity（3 用例）
+
+| # | 用例名 | 测试目的 | 输入 | 预期 | 验证方法 |
+|---|---|---|---|---|---|
+| 1 | `test_chinese_richtext_roundtrip` | 中文富文本往返 | 导出→导入 | 纯文本内容一致 | plain_text 比对 |
+| 2 | `test_empty_fields_handled` | 空备注/空截止 | 含空字段行 | 不报错、正确导入 | added 数正确无崩溃 |
+| 3 | `test_long_name_50_roundtrip` | 50字名称往返 | 50字中文名 | 名称完整保留 | len(name)==50 |
+
+### 9.5 输入校验与安全加固（6 用例）
+
+#### 9.5.1 TestValidationHardening（6 用例）
+
+| # | 用例名 | 测试目的 | 输入 | 预期 | 验证方法 |
+|---|---|---|---|---|---|
+| 1 | `test_reminder_after_deadline_rejected` | 提醒晚于截止 | reminder > deadline | ValidationError | `pytest.raises(ValidationError)` |
+| 2 | `test_reminder_equals_deadline_rejected` | 提醒=截止 | reminder == deadline | ValidationError | `pytest.raises` |
+| 3 | `test_script_tag_in_content_stored_safe` | 脚本注入 | content 含 `<script>` | 存储不执行、展示转义 | plain_text 不含可执行标签 |
+| 4 | `test_name_50_chars_inclusive` | 名称50字边界 | 50个中文字 | 接受 | `add_task` 返回 id>0 |
+| 5 | `test_whitespace_only_name_rejected` | 纯空白名称 | name="   " | ValidationError | `pytest.raises` |
+| 6 | `test_html_in_assignee_plain` | 执行人含HTML | assignee=`<b>张` | 纯文本存储 | task.assignee 不含标签 |
+
+### 9.6 第三轮用例汇总
+
+| 分组 | 类 | 用例数 |
+|---|---|---|
+| 9.1 配置持久化往返 | TestConfigPersistenceRoundTrip / TestConfigCorruptFallback | 18 |
+| 9.2 真实交互事件 | TestPaginationRealInteraction / TestSearchBarRealInteraction / TestTaskDialogRealInteraction / TestSettingsPageRealInteraction | 19 |
+| 9.3 信号链路端到端 | TestReminderFlowE2E / TestDataChangeChain | 9 |
+| 9.4 数据完整性 | TestBackupRestoreIntegrity / TestExcelIntegrity | 6 |
+| 9.5 输入校验加固 | TestValidationHardening | 6 |
+| **第三轮合计** | | **58** |
+
+### 9.7 三轮总计
+
+| 轮次 | 用例数 |
+|---|---|
+| 第一轮（第 2 节） | 259 |
+| 第二轮（第 7 节） | 125 |
+| 第三轮（第 9 节） | 58 |
+| E2E 走查 | 66 |
+| **总计** | **508** |

@@ -149,9 +149,15 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------
     def _wire(self):
-        self.service.task_due.connect(self._on_task_due)
+        self.service.task_due_batch.connect(self._on_task_due_batch)
         self.notifier.queue_changed.connect(self._update_next_status)
         self.notifier.responded.connect(self._on_reminder_responded)
+        # 到期风暴防护：一批任务只触发一次 150ms 防抖刷新，
+        # 不再"每条任务连刷任务/看板/历史三个页面"阻塞主线程
+        self._pages_refresh_timer = QTimer(self)
+        self._pages_refresh_timer.setSingleShot(True)
+        self._pages_refresh_timer.setInterval(150)
+        self._pages_refresh_timer.timeout.connect(self._refresh_all_pages)
         self.tasks_page.data_changed.connect(self.dashboard_page.refresh)
         self.tasks_page.data_changed.connect(self._update_next_status)
         # 任务页分页菜单改每页条数 → 同步设置页下拉框显示
@@ -178,20 +184,26 @@ class MainWindow(QMainWindow):
         self._status_timer.start()
         self._update_next_status()
 
-    def _on_task_due(self, task, history_id):
-        self.notifier.notify(task, history_id)
+    def _on_task_due_batch(self, pairs):
+        """一批任务到期：一次声音/聚合气泡入队，弹窗 pump，页面刷新防抖合并。"""
+        self.notifier.notify_batch(pairs)
         QTimer.singleShot(0, self.notifier.pump)
-        # 提醒一旦触发，立即刷新任务表/看板/历史，避免用户看到滞后数据
-        self.tasks_page.refresh()
-        self.dashboard_page.refresh()
-        self.history_page.refresh()
+        self._schedule_pages_refresh()
 
-    def _on_reminder_responded(self, response: str):
-        """弹窗响应（稍后提醒/标记完成/关闭）后立即刷新所有页面数据。"""
+    def _schedule_pages_refresh(self):
+        """150ms 内的多次刷新请求合并为一次（风暴防护）。"""
+        self._pages_refresh_timer.start()
+
+    def _refresh_all_pages(self):
+        """刷新任务表/看板/历史，避免用户看到滞后数据。"""
         self.tasks_page.refresh()
         self.dashboard_page.refresh()
         self.history_page.refresh()
         self._update_next_status()
+
+    def _on_reminder_responded(self, response: str):
+        """弹窗响应（稍后提醒/标记完成/关闭）后刷新所有页面数据。"""
+        self._refresh_all_pages()
 
     def _on_behavior_changed(self):
         """设置页行为改动立即应用：轮询间隔 + 每页条数。"""
@@ -201,10 +213,7 @@ class MainWindow(QMainWindow):
 
     def _on_data_restored(self):
         """恢复备份后刷新所有页面数据。"""
-        self.tasks_page.refresh()
-        self.dashboard_page.refresh()
-        self.history_page.refresh()
-        self._update_next_status()
+        self._refresh_all_pages()
 
     # ------------------------------------------------------------------
     # 看板卡片 → 任务页筛选
