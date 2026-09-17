@@ -135,19 +135,3 @@ class ReminderLog:
         keys = row.keys() if hasattr(row, "keys") else []
         data = {k: row[k] for k in keys}
         return cls(**data)
-
-
-@dataclass
-class TaskImage:
-    """任务完成佐证图片。文件实体存于 images 目录，stored_name 为磁盘文件名。"""
-    id: Optional[int] = None
-    task_id: Optional[int] = None
-    filename: str = ""        # 原始文件名（展示/另存默认名）
-    stored_name: str = ""     # images 目录内的实际文件名
-    added_at: str = ""
-
-    @classmethod
-    def from_row(cls, row) -> "TaskImage":
-        keys = row.keys() if hasattr(row, "keys") else []
-        data = {k: row[k] for k in keys}
-        return cls(**data)

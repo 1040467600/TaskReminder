@@ -1,50 +1,35 @@
-"""备份恢复：JSON 导出/导入（任务 + 提醒历史 + 佐证图片）。"""
+"""备份恢复：JSON 导出/导入（任务 + 提醒历史）。"""
 from __future__ import annotations
 
-import base64
 import json
-import logging
 from datetime import datetime
 from pathlib import Path
 
-from . import db, repository
+from . import db
 from .models import fmt, html_to_plain
 
-FORMAT_VERSION = 3
+FORMAT_VERSION = 2
 
 
 def export_json(path: str) -> int:
-    """导出全部任务、提醒历史与佐证图片（图片以 base64 内嵌）。返回任务数。"""
+    """导出全部任务与提醒历史。返回任务数。"""
     c = db.get_conn()
     tasks = [dict(r) for r in c.execute("SELECT * FROM tasks").fetchall()]
     history = [dict(r) for r in c.execute("SELECT * FROM reminder_history").fetchall()]
-    images = []
-    for r in c.execute("SELECT * FROM task_images ORDER BY id ASC").fetchall():
-        item = dict(r)
-        item["data_b64"] = None
-        img_file = repository.images_dir() / item["stored_name"]
-        try:
-            item["data_b64"] = base64.b64encode(img_file.read_bytes()).decode("ascii")
-        except OSError as e:
-            logging.getLogger("task_reminder").warning(
-                "备份时图片文件缺失/不可读：%s（%s）", img_file, e)
-        images.append(item)
     payload = {
         "format": "task_reminder_backup",
         "version": FORMAT_VERSION,
         "exported_at": fmt(datetime.now()),
         "tasks": tasks,
         "history": history,
-        "images": images,
     }
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+    Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return len(tasks)
 
 
 def import_json(path: str) -> tuple[int, int]:
-    """导入 JSON 备份（按 id upsert，含佐证图片文件还原）。返回 (任务数, 历史数)。"""
+    """导入 JSON 备份（按 id upsert）。返回 (任务数, 历史数)。"""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if data.get("format") != "task_reminder_backup":
         raise ValueError("不是有效的任务提醒备份文件")
@@ -81,21 +66,4 @@ def import_json(path: str) -> tuple[int, int]:
                 h,
             )
             n_hist += 1
-        for im in data.get("images", []):   # v3 起备份内嵌佐证图片
-            c.execute(
-                "INSERT INTO task_images(id, task_id, filename, stored_name, added_at)"
-                " VALUES(:id, :task_id, :filename, :stored_name, :added_at)"
-                " ON CONFLICT(id) DO UPDATE SET task_id=excluded.task_id,"
-                " filename=excluded.filename, stored_name=excluded.stored_name,"
-                " added_at=excluded.added_at",
-                im,
-            )
-            blob = im.get("data_b64")
-            if blob:
-                try:
-                    target = repository.images_dir() / im["stored_name"]
-                    target.write_bytes(base64.b64decode(blob))
-                except (OSError, ValueError) as e:
-                    logging.getLogger("task_reminder").warning(
-                        "恢复时图片写入失败：%s（%s）", im.get("stored_name"), e)
     return n_tasks, n_hist

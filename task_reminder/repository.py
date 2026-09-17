@@ -1,15 +1,11 @@
-"""数据仓库层：任务/提醒历史/保存的搜索条件/佐证图片的全部数据操作。"""
+"""数据仓库层：任务/提醒历史/保存的搜索条件的全部数据操作。"""
 from __future__ import annotations
 
-import shutil
-import uuid
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Iterable, Optional
 
 from . import db, app_config
-from .models import (STATUS_SORT_ORDER, Task, TaskImage, TaskStatus, ReminderLog, fmt,
-                     html_to_plain, parse)
+from .models import (STATUS_SORT_ORDER, Task, TaskStatus, ReminderLog, fmt, html_to_plain, parse)
 
 # ---------------------------------------------------------------------------
 # 排序键白名单 → SQL
@@ -114,24 +110,19 @@ def _task_kwargs(t: Task) -> dict:
 
 
 def delete_task(task_id: int) -> None:
-    _delete_image_files(list_task_images(task_id))
     with db.transaction() as c:
         c.execute("DELETE FROM tasks WHERE id=?", (task_id,))
         c.execute("DELETE FROM reminder_history WHERE task_id=?", (task_id,))
-        c.execute("DELETE FROM task_images WHERE task_id=?", (task_id,))
 
 
 def delete_tasks(ids: Iterable[int]) -> int:
     ids = list(ids)
     if not ids:
         return 0
-    for tid in ids:                       # 先收集并删除佐证图片文件
-        _delete_image_files(list_task_images(tid))
     with db.transaction() as c:
         q = ",".join("?" * len(ids))
         cur = c.execute(f"DELETE FROM tasks WHERE id IN ({q})", ids)
         c.execute(f"DELETE FROM reminder_history WHERE task_id IN ({q})", ids)
-        c.execute(f"DELETE FROM task_images WHERE task_id IN ({q})", ids)
         return cur.rowcount
 
 
@@ -372,91 +363,3 @@ def overdue_tasks(limit: int = 10) -> list[Task]:
     ).fetchall()
     return [Task.from_row(r) for r in rows]
 
-
-# ---------------------------------------------------------------------------
-# 任务佐证图片
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
-IMAGE_MAX_BYTES = 20 * 1024 * 1024     # 单张上限 20MB
-
-
-class ImageError(ValueError):
-    """佐证图片不合法。"""
-
-
-def images_dir() -> Path:
-    """佐证图片存储目录：与数据库同级的 images/（随 %APPDATA% 走，不进安装目录）。"""
-    p = Path(db.db_path()).parent / "images"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def image_path(image: TaskImage) -> Path:
-    return images_dir() / image.stored_name
-
-
-def list_task_images(task_id: int) -> list[TaskImage]:
-    rows = db.get_conn().execute(
-        "SELECT * FROM task_images WHERE task_id=? ORDER BY id ASC", (task_id,)
-    ).fetchall()
-    return [TaskImage.from_row(r) for r in rows]
-
-
-def all_images() -> list[TaskImage]:
-    """全部图片记录（备份用）。"""
-    rows = db.get_conn().execute("SELECT * FROM task_images ORDER BY id ASC").fetchall()
-    return [TaskImage.from_row(r) for r in rows]
-
-
-def add_task_image(task_id: int, src_path: str) -> TaskImage:
-    """把用户选择的图片复制进 images 目录并登记。返回新图片记录。"""
-    if get_task(task_id) is None:
-        raise ImageError("任务不存在")
-    src = Path(src_path)
-    if not src.is_file():
-        raise ImageError("图片文件不存在")
-    ext = src.suffix.lower()
-    if ext not in IMAGE_EXTS:
-        raise ImageError(f"不支持的图片格式（支持 {', '.join(sorted(IMAGE_EXTS))}）")
-    size = src.stat().st_size
-    if size > IMAGE_MAX_BYTES:
-        raise ImageError(f"图片超过 {IMAGE_MAX_BYTES // 1024 // 1024}MB 上限")
-    stored = f"{task_id}_{uuid.uuid4().hex}{ext}"
-    shutil.copy2(src, images_dir() / stored)
-    now = _now()
-    with db.transaction() as c:
-        cur = c.execute(
-            "INSERT INTO task_images(task_id, filename, stored_name, added_at)"
-            " VALUES(?,?,?,?)",
-            (task_id, src.name, stored, now),
-        )
-        img_id = int(cur.lastrowid)
-    return TaskImage(id=img_id, task_id=task_id, filename=src.name,
-                     stored_name=stored, added_at=now)
-
-
-def get_image(image_id: int) -> Optional[TaskImage]:
-    row = db.get_conn().execute(
-        "SELECT * FROM task_images WHERE id=?", (image_id,)).fetchone()
-    return TaskImage.from_row(row) if row else None
-
-
-def delete_task_image(image_id: int) -> bool:
-    """删除一张佐证图片（记录 + 文件）。返回是否删除成功。"""
-    image = get_image(image_id)
-    if image is None:
-        return False
-    _delete_image_files([image])
-    with db.transaction() as c:
-        cur = c.execute("DELETE FROM task_images WHERE id=?", (image_id,))
-        return cur.rowcount > 0
-
-
-def _delete_image_files(images: Iterable[TaskImage]) -> None:
-    """尽力删除图片文件；文件缺失不算错误。"""
-    for image in images:
-        try:
-            p = images_dir() / image.stored_name
-            if p.is_file():
-                p.unlink()
-        except OSError:
-            pass
