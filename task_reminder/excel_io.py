@@ -15,11 +15,12 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from .models import Task, fmt, html_to_plain, parse
+from . import APP_NAME
+from .models import Task, TaskCategory, fmt, html_to_plain, parse
 
-HEADERS = ["任务名称", "执行人", "任务内容", "截止时间", "提醒时间", "状态", "备注", "创建时间"]
+HEADERS = ["任务名称", "执行人", "任务内容", "截止时间", "提醒时间", "状态", "备注", "创建时间", "任务类别"]
 
-WIDTHS = [28, 12, 46, 18, 18, 10, 26, 20]
+WIDTHS = [28, 12, 46, 18, 18, 10, 26, 20, 14]
 
 STATUS_DEFAULT = "未开始"
 
@@ -70,9 +71,10 @@ def _export_xlsxwriter(path: str, tasks: list[Task], sheet_title: str):
             t.status,
             t.notes or "",
             t.created_at,
+            t.category or TaskCategory.OTHER,
         ])
         r += 1
-    ws.write(r + 1, 0, f"导出时间：{fmt(datetime.now())}    共 {len(tasks)} 条    由 任务提醒助手 导出")
+    ws.write(r + 1, 0, f"导出时间：{fmt(datetime.now())}    共 {len(tasks)} 条    由 {APP_NAME} 导出")
     wb.close()
 
 
@@ -109,10 +111,11 @@ def _export_openpyxl(path: str, tasks: list[Task], sheet_title: str):
             t.status,
             t.notes or "",
             t.created_at,
+            t.category or TaskCategory.OTHER,
         ])
 
     ws.append([])
-    ws.append([f"导出时间：{fmt(datetime.now())}    共 {len(tasks)} 条    由 任务提醒助手 导出"])
+    ws.append([f"导出时间：{fmt(datetime.now())}    共 {len(tasks)} 条    由 {APP_NAME} 导出"])
     wb.save(path)
 
 
@@ -187,6 +190,7 @@ def read_rows(path: str) -> list[dict]:
             "status": str(get("状态")).strip() or STATUS_DEFAULT,
             "notes": str(get("备注")),
             "created_at": get("创建时间"),
+            "category": str(get("任务类别")).strip(),
         })
     return out
 
@@ -218,20 +222,24 @@ def import_tasks(path: str, strategy: str = "skip") -> ImportReport:
             status = row["status"]
             if status not in TaskStatus.ALL:
                 status = STATUS_DEFAULT
+            category = row["category"] if row["category"] in TaskCategory.ALL else TaskCategory.OTHER
 
             dup = repo.find_duplicate(name, assignee, deadline)
             if dup is not None:
                 if strategy == "overwrite":
+                    # 旧格式 Excel 无类别列时保留原类别（同状态保留逻辑）
+                    cat = category if category != TaskCategory.OTHER and row["category"] else dup.category
                     repo.update_task(dup.id, name=name, assignee=assignee, content=content,
                                      deadline=deadline, reminder_time=reminder,
                                      status=status if dup.status == status else dup.status,
-                                     notes=row["notes"])
+                                     notes=row["notes"], category=cat)
                     report.updated += 1
                 else:
                     report.skipped += 1
                 continue
             repo.add_task(name=name, assignee=assignee, content=content, deadline=deadline,
-                          reminder_time=reminder, status=status, notes=row["notes"])
+                          reminder_time=reminder, status=status, notes=row["notes"],
+                          category=category)
             report.added += 1
         except Exception as e:
             report.errors.append(f"第 {n} 行：{e}")

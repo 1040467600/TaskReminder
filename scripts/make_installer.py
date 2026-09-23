@@ -18,7 +18,7 @@ import zipfile
 from pathlib import Path
 
 APP_NAME = "TaskReminder"
-DISPLAY_NAME = "任务提醒助手"
+DISPLAY_NAME = "彭城派出所任务闭环管理系统"
 PUBLISHER = "TaskReminder Project"
 REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\TaskReminder"
 SILENT_FLAGS = ("/S", "-S", "/s")

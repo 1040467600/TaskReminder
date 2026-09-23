@@ -76,6 +76,7 @@ def ensure_schema(c: sqlite3.Connection) -> None:
             deadline TEXT NOT NULL DEFAULT '',
             reminder_time TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT '未开始',
+            category TEXT NOT NULL DEFAULT '其他',
             notes TEXT NOT NULL DEFAULT '',
             triggered INTEGER NOT NULL DEFAULT 0,
             status_changed_at TEXT NOT NULL DEFAULT '',
@@ -108,6 +109,9 @@ def ensure_schema(c: sqlite3.Connection) -> None:
     # v2.0.3 → v2.1 迁移：内容纯文本列（搜索/显示用），并回填存量数据
     if "content_plain" not in task_cols:
         cur.execute("ALTER TABLE tasks ADD COLUMN content_plain TEXT NOT NULL DEFAULT ''")
+    # v2.2 → v2.3 迁移：任务类别列，存量数据默认"其他"
+    if "category" not in task_cols:
+        cur.execute("ALTER TABLE tasks ADD COLUMN category TEXT NOT NULL DEFAULT '其他'")
     _backfill_content_plain(cur)
     hist_cols = {r[1] for r in cur.execute("PRAGMA table_info(reminder_history)")}
     if "response" not in hist_cols:

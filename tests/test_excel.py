@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from task_reminder import excel_io, repository as repo
+from task_reminder import APP_NAME, excel_io, repository as repo
 from task_reminder.models import fmt
 
 
@@ -115,7 +115,7 @@ class TestImport:
         ws.append(excel_io.HEADERS)
         ws.append(["元信息任务名称", "赵六", "x", fmt(now), "2020-01-01 10:00", "未开始", "", ""])
         ws.append([])
-        ws.append(["导出时间：2026-09-05 10:00    共 1 条    由 任务提醒助手 导出"])
+        ws.append([f"导出时间：2026-09-05 10:00    共 1 条    由 {APP_NAME} 导出"])
         wb.save(path)
         report = excel_io.import_tasks(path)
         assert report.total == 1 and report.added == 1

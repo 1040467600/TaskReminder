@@ -61,8 +61,9 @@ class MainWindow(QMainWindow):
         pm = app_icon().pixmap(26, 26)
         if not pm.isNull():
             icon_lbl.setPixmap(pm)
-        title = QLabel("任务提醒助手")
+        title = QLabel(APP_NAME)
         title.setObjectName("appTitle")
+        title.setWordWrap(True)
         head.addWidget(icon_lbl)
         head.addWidget(title)
         head.addStretch(1)
@@ -122,7 +123,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     def _build_tray(self):
         self.tray = QSystemTrayIcon(app_icon(), self)
-        self.tray.setToolTip("任务提醒助手")
+        self.tray.setToolTip(APP_NAME)
         menu = QMenu()
         act_show = QAction("显示主窗口", self)
         act_quit = QAction("退出", self)
@@ -309,7 +310,7 @@ class MainWindow(QMainWindow):
         if bool(app_config.get("tray_close", True)):
             ev.ignore()
             self.hide()
-            self.tray.showMessage("任务提醒助手", "已最小化到托盘，双击托盘图标可再次打开。",
+            self.tray.showMessage(APP_NAME, "已最小化到托盘，双击托盘图标可再次打开。",
                                   QSystemTrayIcon.MessageIcon.Information, 4000)
         else:
             app_config.set("window_state", self._window_state_json())

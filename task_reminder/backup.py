@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import db
-from .models import fmt, html_to_plain
+from .models import fmt, html_to_plain, normalize_category
 
 FORMAT_VERSION = 2
 
@@ -40,17 +40,20 @@ def import_json(path: str) -> tuple[int, int]:
             t = dict(t)
             # 兼容旧备份：按导入内容重算纯文本列
             t["content_plain"] = html_to_plain(t.get("content") or "")
+            # 兼容无类别的旧备份：缺失/非法类别回退"其他"
+            t["category"] = normalize_category(t.get("category") or "")
             c.execute(
                 "INSERT INTO tasks(id, name, assignee, content, content_plain, deadline,"
-                " reminder_time, status, notes, triggered, status_changed_at, created_at, updated_at)"
+                " reminder_time, status, category, notes, triggered, status_changed_at,"
+                " created_at, updated_at)"
                 " VALUES(:id, :name, :assignee, :content, :content_plain, :deadline,"
-                " :reminder_time, :status, :notes, :triggered, :status_changed_at,"
+                " :reminder_time, :status, :category, :notes, :triggered, :status_changed_at,"
                 " :created_at, :updated_at)"
                 " ON CONFLICT(id) DO UPDATE SET name=excluded.name, assignee=excluded.assignee,"
                 " content=excluded.content, content_plain=excluded.content_plain,"
                 " deadline=excluded.deadline,"
                 " reminder_time=excluded.reminder_time, status=excluded.status,"
-                " notes=excluded.notes, triggered=excluded.triggered,"
+                " category=excluded.category, notes=excluded.notes, triggered=excluded.triggered,"
                 " status_changed_at=excluded.status_changed_at, updated_at=excluded.updated_at",
                 t,
             )

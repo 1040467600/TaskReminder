@@ -104,8 +104,10 @@ class TestConfigPersistenceRoundTrip:
         header1 = page1.view.horizontalHeader()
         header1.moveSection(0, 2)                  # sectionMoved → 自动保存
         page2 = make_page(qtbot)
-        # 恢复语义：列配置按保存的视觉顺序应用 → model.column_ids 反映列序
-        assert page2.model.column_ids[0] == "content"
+        # v2.3 起默认列序 name, category, content, …；name 拖到视觉 2 后
+        # 视觉顺序为 category, content, name, assignee…
+        assert page2.model.column_ids[0] == "category"
+        assert page2.model.column_ids[1] == "content"
         assert page2.model.column_ids[2] == "name"
 
     def test_column_visibility_roundtrip(self, qtbot):

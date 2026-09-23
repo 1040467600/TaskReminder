@@ -6,6 +6,8 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QGridLayout, QHBox
                              QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout,
                              QWidget)
 
+from ..models import TaskCategory
+
 
 def add_calendar_year_buttons(date_edit: QDateEdit) -> None:
     """在 QDateEdit 弹出日历的导航栏中，翻月按钮（◀ ▶）旁插入翻年按钮（« »）。
@@ -59,7 +61,7 @@ class SearchBar(QWidget):
     changed = pyqtSignal(dict)     # 防抖后的完整条件
 
     # 高级面板中可被设置/清空的字段（用于"收起后条件仍生效"提示与重置）
-    _ADV_KEYS = ("content_kw", "assignee", "statuses", "created", "deadline")
+    _ADV_KEYS = ("content_kw", "assignee", "statuses", "category", "created", "deadline")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -131,11 +133,19 @@ class SearchBar(QWidget):
         status_row.addStretch(1)
         grid.addLayout(status_row, 1, 3)
 
+        # 任务类别（全部 = 不限）
+        grid.addWidget(QLabel("任务类别："), 2, 0)
+        self.cmb_category = QComboBox()
+        self.cmb_category.addItem("全部")
+        self.cmb_category.addItems(list(TaskCategory.ALL))
+        self.cmb_category.currentIndexChanged.connect(self._debounce.start)
+        grid.addWidget(self.cmb_category, 2, 1, 1, 3)
+
         # 日期范围：带启用开关，取消勾选即恢复"不限"。
         # 翻年按钮（« »）在弹出日历的导航栏内、翻月按钮（◀ ▶）旁。
         self._date_ranges = {}
         for r, (label, key) in enumerate([("创建时间：", "created"), ("截止时间：", "deadline")],
-                                         start=2):
+                                         start=3):
             grid.addWidget(QLabel(label), r, 0)
             chk = QCheckBox("限定")
             grid.addWidget(chk, r, 1)
@@ -197,6 +207,8 @@ class SearchBar(QWidget):
             used.append("assignee")
         if c.get("statuses"):
             used.append("statuses")
+        if c.get("category"):
+            used.append("category")
         if c.get("created_from") or c.get("created_to"):
             used.append("created")
         if c.get("deadline_from") or c.get("deadline_to"):
@@ -215,6 +227,8 @@ class SearchBar(QWidget):
         statuses = [s for s, cb in self.chk_status.items() if cb.isChecked()]
         if len(statuses) < 3:
             c["statuses"] = statuses
+        if self.cmb_category.currentIndex() > 0:
+            c["category"] = self.cmb_category.currentText()
         for key in ("created", "deadline"):
             rng = self._date_ranges[key]
             if not rng["chk"].isChecked():
@@ -230,6 +244,9 @@ class SearchBar(QWidget):
         statuses = c.get("statuses")
         for s, cb in self.chk_status.items():
             cb.setChecked(True if statuses is None else s in statuses)
+        cat = c.get("category")
+        i = self.cmb_category.findText(cat) if cat else 0
+        self.cmb_category.setCurrentIndex(max(0, i))
         for key in ("created", "deadline"):
             rng = self._date_ranges[key]
             has = bool(c.get(f"{key}_from") or c.get(f"{key}_to"))

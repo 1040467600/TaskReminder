@@ -11,7 +11,8 @@ from PyQt6.QtWidgets import (QComboBox, QCompleter, QDateTimeEdit, QDialog, QFor
                              QVBoxLayout, QWidget)
 
 from .. import repository
-from ..models import CONTENT_MAX, NAME_MAX, NAME_MIN, NOTES_MAX, Task, TaskStatus, plain_len
+from ..models import (CONTENT_MAX, NAME_MAX, NAME_MIN, NOTES_MAX, Task, TaskCategory,
+                      TaskStatus, plain_len)
 
 
 class TaskDialog(QDialog):
@@ -35,6 +36,11 @@ class TaskDialog(QDialog):
         self.edit_name.setMaxLength(NAME_MAX)
         self.edit_name.setPlaceholderText("1-50 个字符")
         form.addRow("任务名称：", self.edit_name)
+
+        # 任务类别
+        self.cmb_category = QComboBox()
+        self.cmb_category.addItems(list(TaskCategory.ALL))
+        form.addRow("任务类别：", self.cmb_category)
 
         # 执行人（历史人员自动补全）
         self.edit_assignee = QLineEdit()
@@ -232,6 +238,8 @@ class TaskDialog(QDialog):
         self.dt_deadline.setDateTime(QDateTime.fromString(t.deadline, "yyyy-MM-dd HH:mm"))
         self.dt_reminder.setDateTime(QDateTime.fromString(t.reminder_time, "yyyy-MM-dd HH:mm"))
         self.cmb_status.setCurrentText(t.status)
+        self.cmb_category.setCurrentText(t.category if t.category in TaskCategory.ALL
+                                         else TaskCategory.OTHER)
         self.edit_notes.setPlainText(t.notes or "")
         self._validate()
 
@@ -321,6 +329,7 @@ class TaskDialog(QDialog):
                 reminder_time=self.dt_reminder.dateTime().toString("yyyy-MM-dd HH:mm"),
                 status=self.cmb_status.currentText(),
                 notes=self.edit_notes.toPlainText(),
+                category=self.cmb_category.currentText(),
             )
             if self.task_id:
                 repository.update_task(self.task_id, **kwargs)

@@ -62,7 +62,7 @@ def run() -> int:
 
     another, server = _is_another_running()
     if another:
-        QMessageBox.information(None, APP_NAME, "任务提醒助手已在运行中（请查看系统托盘）。")
+        QMessageBox.information(None, APP_NAME, f"{APP_NAME}已在运行中（请查看系统托盘）。")
         return 0
     app.aboutToQuit.connect(server.close if server else (lambda: None))
 
@@ -77,6 +77,14 @@ def run() -> int:
         sys.__excepthook__(exc_type, exc, tb)
     sys.excepthook = _excepthook
 
+    # 启动画面：先出现品牌页，覆盖数据库初始化与主窗口构建耗时
+    from .ui.splash import show_splash
+    splash = show_splash()
+    from PyQt6.QtCore import QElapsedTimer, QThread
+    t0 = QElapsedTimer()
+    t0.start()
+    app.processEvents()
+
     db.init()
 
     from .ui.theme import apply_theme
@@ -86,7 +94,13 @@ def run() -> int:
 
     from .ui.main_window import MainWindow
     win = MainWindow()
+
+    # 启动画面至少停留约 1.2s，随后交棒主窗口
+    while t0.elapsed() < 1200:
+        app.processEvents()
+        QThread.msleep(30)
     win.show()
+    splash.finish(win)
 
     # 关闭窗口后不因托盘存在而退出
     app.setQuitOnLastWindowClosed(False)

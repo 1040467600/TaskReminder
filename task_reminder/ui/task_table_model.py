@@ -65,6 +65,8 @@ class TaskTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.DisplayRole:
             if cid == "name":
                 return task.summary()
+            if cid == "category":
+                return task.category or "其他"
             if cid == "content":
                 # 内容纯文本截断显示（备注也算内容的一部分）
                 text = task.plain_text() or task.notes or ""
@@ -82,7 +84,8 @@ class TaskTableModel(QAbstractTableModel):
                 return task.notes or ""
         if role == Qt.ItemDataRole.ToolTipRole:
             from ..notifier import remaining_text
-            tip = f"【{task.summary()}】\n执行人：{task.assignee}\n截止：{task.deadline}\n提醒：{task.reminder_time}"
+            tip = (f"【{task.summary()}】\n类别：{task.category or '其他'}\n"
+                   f"执行人：{task.assignee}\n截止：{task.deadline}\n提醒：{task.reminder_time}")
             plain = task.plain_text()
             if plain:
                 tip += f"\n内容：{plain[:300]}"
@@ -95,6 +98,6 @@ class TaskTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.ForegroundRole and cid in ("deadline", "reminder_time"):
             fg = deadline_foreground(task)
             return fg
-        if role == Qt.ItemDataRole.TextAlignmentRole and cid in ("status",):
+        if role == Qt.ItemDataRole.TextAlignmentRole and cid in ("status", "category"):
             return int(Qt.AlignmentFlag.AlignCenter)
         return None

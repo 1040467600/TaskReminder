@@ -24,6 +24,27 @@ class TaskStatus:
     ALL = (NOT_STARTED, IN_PROGRESS, DONE)
 
 
+class TaskCategory:
+    """任务类别（固定枚举，新任务默认"其他"）。"""
+    CASE = "案件办理"
+    DISPUTE = "矛盾纠纷调处"
+    NOISE = "噪音处置"
+    KEY_PERSON = "重点人员管控"
+    VENUE_CHECK = "场所检查"
+    ANTI_FRAUD = "反诈宣传"
+    OTHER = "其他"
+
+    ALL = (CASE, DISPUTE, NOISE, KEY_PERSON, VENUE_CHECK, ANTI_FRAUD, OTHER)
+
+
+DEFAULT_CATEGORY = TaskCategory.OTHER
+
+
+def normalize_category(category: str) -> str:
+    """非法/缺失类别回退为默认"其他"（导入、旧数据兜底）。"""
+    return category if category in TaskCategory.ALL else DEFAULT_CATEGORY
+
+
 # 状态排序权重（用于 SQL CASE 排序）
 STATUS_SORT_ORDER = {TaskStatus.NOT_STARTED: 0, TaskStatus.IN_PROGRESS: 1, TaskStatus.DONE: 2}
 
@@ -84,6 +105,7 @@ class Task:
     deadline: str = ""         # YYYY-MM-DD HH:MM
     reminder_time: str = ""    # YYYY-MM-DD HH:MM
     status: str = TaskStatus.NOT_STARTED
+    category: str = DEFAULT_CATEGORY
     notes: str = ""
     triggered: int = 0
     status_changed_at: str = ""

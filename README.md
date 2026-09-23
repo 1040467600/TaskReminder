@@ -1,4 +1,4 @@
-# 任务提醒助手（TaskReminder）
+# 彭城派出所任务闭环管理系统（TaskReminder）
 
 单机版桌面任务提醒软件。Python 3.10 + PyQt6 + SQLite，无需联网，数据全部本地存储。
 

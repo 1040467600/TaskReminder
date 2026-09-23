@@ -38,11 +38,13 @@ def main() -> int:
 
     # ================= 数据层 =================
     print("\n===== 数据层：CRUD / 校验 =====")
-    tid = repo.add_task("写报告", "张三", "<b>季度</b>报告", "2026-09-10 12:00", "2026-09-10 09:00")
+    tid = repo.add_task("写报告", "张三", "<b>季度</b>报告", "2026-09-10 12:00", "2026-09-10 09:00",
+                        category="案件办理")
     check("新增任务", tid > 0)
     t = repo.get_task(tid)
     check("富文本内容保存", t.content == "<b>季度</b>报告")
     check("摘要取名称", t.summary().startswith("写报告"))
+    check("任务类别保存", t.category == "案件办理", f"实际 {t.category!r}")
     try:
         repo.add_task("", "张三", "", "2026-09-10 12:00", "2026-09-10 09:00")
         check("空名称被拒绝", False)
@@ -140,18 +142,22 @@ def main() -> int:
     check("超页自动回退（# 已有修复）", page.page_no == 1)
 
     # 列配置：拖拽 + 持久化 + 新实例恢复（#4）
-    # 插入内容列后视觉顺序：name, content, assignee, deadline, …
-    # 把名称列（视觉 0）拖到视觉 3 → content, assignee, deadline, name, …
+    # v2.3 起默认视觉顺序：name, category, content, assignee, deadline, …
+    # 把名称列（视觉 0）拖到视觉 3 → category, content, assignee, name, …
     header = page.view.horizontalHeader()
     header.moveSection(0, 3)     # 把名称列拖到第 4 位
     app.processEvents()
     saved = page._column_state()
-    check("保存顺序反映拖拽", [s["id"] for s in saved][:4] == ["content", "assignee", "deadline", "name"])
+    check("保存顺序反映拖拽", [s["id"] for s in saved][:4] == ["category", "content", "assignee", "name"])
     page._save_states()
     page2 = TasksPage()
-    check("新实例恢复拖拽后的列顺序", page2.model.column_ids[:4] == ["content", "assignee", "deadline", "name"])
+    check("新实例恢复拖拽后的列顺序",
+          page2.model.column_ids[:4] == ["category", "content", "assignee", "name"])
     page2._reset_columns()
     check("重置列配置", page2.model.column_ids[0] == "name")
+    check("任务类别列默认显示", "category" in page2.model.column_ids
+          and not page2.view.horizontalHeader().isSectionHidden(
+              page2.model.column_ids.index("category")))
 
     # 每页条数同步（#5）
     page.pager._set_size(50)
@@ -176,6 +182,17 @@ def main() -> int:
     check("执行人精确过滤", page.model.rowCount() == 3)
     sb.reset()
     sb._debounce.stop()
+
+    # 任务类别筛选（v2.3）
+    sb.btn_advanced.setChecked(True)
+    sb.cmb_category.setCurrentText("案件办理")   # 仅"写报告"是案件办理
+    page.refresh()
+    check("任务类别筛选", page.model.rowCount() == 1, f"实际 {page.model.rowCount()}")
+    check("类别筛选进入条件", sb.criteria().get("category") == "案件办理")
+    sb.cmb_category.setCurrentIndex(0)
+    sb.reset()
+    sb._debounce.stop()
+    page.refresh()
 
     # 名称/内容关键词分开（#1）
     sb.edit_content_kw.setText("季度报告不存在的内容")
@@ -228,6 +245,8 @@ def main() -> int:
     dlg.edit_name.setText("测试任务")
     dlg.edit_assignee.setText("测试人")
     check("填名后初始校验通过", dlg._validate() is None, dlg.lbl_error.text())
+    dlg.cmb_category.setCurrentText("场所检查")
+    check("对话框类别可选", dlg.cmb_category.currentText() == "场所检查")
     dlg.close()
 
     # ================= 导入导出 =================

@@ -35,7 +35,7 @@ class ManualPDF(FPDF):
             return
         self.set_font("yahei", "", 8)
         self.set_text_color(140, 140, 140)
-        self.cell(0, 6, "任务提醒助手 用户操作手册 v2.0", align="L")
+        self.cell(0, 6, "彭城派出所任务闭环管理系统 用户操作手册 v2.0", align="L")
         self.ln(10)
 
     def footer(self):

@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from typing import Iterable, Optional
 
 from . import db, app_config
-from .models import (STATUS_SORT_ORDER, Task, TaskStatus, ReminderLog, fmt, html_to_plain, parse)
+from .models import (STATUS_SORT_ORDER, Task, TaskStatus, ReminderLog,
+                     DEFAULT_CATEGORY, fmt, html_to_plain, normalize_category, parse)
 
 # ---------------------------------------------------------------------------
 # 排序键白名单 → SQL
@@ -14,6 +15,7 @@ _SORT_SQL = {
     "reminder_time": "reminder_time",
     "assignee": "assignee COLLATE NOCASE",
     "name": "name COLLATE NOCASE",
+    "category": "category",
     "created_at": "created_at",
     "updated_at": "updated_at",
     "status": "CASE status WHEN '未开始' THEN 0 WHEN '进行中' THEN 1 WHEN '已完成' THEN 2 ELSE 3 END",
@@ -57,24 +59,28 @@ def validate_task(name: str, assignee: str, content: str, deadline: str,
 # ---------------------------------------------------------------------------
 # 任务 CRUD
 def add_task(name: str, assignee: str, content: str, deadline: str, reminder_time: str,
-             status: str = TaskStatus.NOT_STARTED, notes: str = "") -> int:
+             status: str = TaskStatus.NOT_STARTED, notes: str = "",
+             category: str = DEFAULT_CATEGORY) -> int:
     validate_task(name, assignee, content, deadline, reminder_time, notes=notes)
+    category = normalize_category(category)
     now = _now()
     with db.transaction() as c:
         cur = c.execute(
             "INSERT INTO tasks(name, assignee, content, content_plain, deadline, reminder_time,"
-            " status, notes, triggered, status_changed_at, created_at, updated_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            " status, category, notes, triggered, status_changed_at, created_at, updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (name.strip(), assignee.strip(), content, html_to_plain(content), deadline,
-             reminder_time, status, notes,
+             reminder_time, status, category, notes,
              0, now if status != TaskStatus.NOT_STARTED else "", now, now),
         )
         return int(cur.lastrowid)
 
 
 def update_task(task_id: int, name: str, assignee: str, content: str, deadline: str,
-                reminder_time: str, status: str, notes: str) -> None:
+                reminder_time: str, status: str, notes: str,
+                category: str = DEFAULT_CATEGORY) -> None:
     validate_task(name, assignee, content, deadline, reminder_time, notes=notes)
+    category = normalize_category(category)
     old = get_task(task_id)
     now = _now()
     status_changed = old is None or old.status != status
@@ -82,9 +88,10 @@ def update_task(task_id: int, name: str, assignee: str, content: str, deadline: 
     with db.transaction() as c:
         c.execute(
             "UPDATE tasks SET name=?, assignee=?, content=?, content_plain=?, deadline=?,"
-            " reminder_time=?, status=?, notes=?, status_changed_at=?, updated_at=? WHERE id=?",
+            " reminder_time=?, status=?, category=?, notes=?, status_changed_at=?, updated_at=?"
+            " WHERE id=?",
             (name.strip(), assignee.strip(), content, html_to_plain(content), deadline,
-             reminder_time, status, notes, sc_at, now, task_id),
+             reminder_time, status, category, notes, sc_at, now, task_id),
         )
     # 状态改为已完成时清除未触发的提醒标记；从已完成改回未完成时，
     # 若提醒时间在未来则重新允许触发（否则 triggered 仍为 1，不会再提醒）
@@ -106,7 +113,7 @@ def set_status(task_id: int, status: str) -> None:
 
 def _task_kwargs(t: Task) -> dict:
     return dict(name=t.name, assignee=t.assignee, content=t.content, deadline=t.deadline,
-                reminder_time=t.reminder_time, notes=t.notes)
+                reminder_time=t.reminder_time, notes=t.notes, category=t.category)
 
 
 def delete_task(task_id: int) -> None:
@@ -176,6 +183,9 @@ def _criteria_sql(criteria: dict) -> tuple[str, list]:
     if statuses:
         where.append("status IN (%s)" % ",".join("?" * len(statuses)))
         args += list(statuses)
+    if criteria.get("category"):
+        where.append("category = ?")
+        args.append(criteria["category"])
     return " AND ".join(where), args
 
 
