@@ -151,7 +151,7 @@ class TestModelMore:
                     "2026-09-09 09:00", status=TaskStatus.NOT_STARTED, notes="备注X")
         m = TaskTableModel()
         m.set_tasks(repo.all_tasks())
-        idx_name = m.index(0, 0)
+        idx_name = m.index(0, m.column_ids.index("name"))
         assert m.data(idx_name) == "备注任务名称"
         tip = m.data(idx_name, Qt.ItemDataRole.ToolTipRole)
         assert "备注任务名称" in tip

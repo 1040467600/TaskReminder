@@ -9,7 +9,8 @@ QMainWindow, QDialog { background: #F5F7FA; }
 /* 侧边栏 */
 #sidebar { background: #1E293B; border: none; }
 #sidebar QLabel { color: #E2E8F0; background: transparent; }
-#appTitle { font-size: {FS_T}px; font-weight: 600; color: #FFFFFF; background: transparent; padding: 2px 4px; }
+#appBrand1 { color: #F5C542; font-size: 18px; font-weight: 700; background: transparent; padding: 0 2px; }
+#appBrand2 { color: #FFFFFF; font-size: 14px; font-weight: 600; background: transparent; padding: 0 2px; }
 #appVersion { color: #94A3B8; font-size: {FS_S}px; padding: 8px; background: transparent; }
 QPushButton#navBtn {
     color: #CBD5E1; background: transparent; border: none; border-radius: 8px;
@@ -164,7 +165,8 @@ QMainWindow, QDialog { background: #0F172A; }
 
 #sidebar { background: #1E293B; border: none; }
 #sidebar QLabel { color: #E2E8F0; background: transparent; }
-#appTitle { font-size: {FS_T}px; font-weight: 600; color: #FFFFFF; background: transparent; padding: 2px 4px; }
+#appBrand1 { color: #F5C542; font-size: 18px; font-weight: 700; background: transparent; padding: 0 2px; }
+#appBrand2 { color: #FFFFFF; font-size: 14px; font-weight: 600; background: transparent; padding: 0 2px; }
 #appVersion { color: #94A3B8; font-size: {FS_S}px; padding: 8px; background: transparent; }
 QPushButton#navBtn {
     color: #CBD5E1; background: transparent; border: none; border-radius: 8px;

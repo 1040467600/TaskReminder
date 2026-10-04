@@ -37,6 +37,7 @@ class TasksPage(QWidget):
         self.page_no = 1
         self.sort_key = "created_at"
         self.sort_dir = "desc"          # '' 表示默认（未排序）
+        self._columns_fitted = False    # 首次显示时把剩余宽度分给名称列（仅一次）
         self._build()
         self._restore_states()
         self.refresh()
@@ -152,11 +153,38 @@ class TasksPage(QWidget):
         outer.addWidget(table_card, 1)
 
     def eventFilter(self, obj, event):
-        """表格视口尺寸变化时，让空状态提示始终铺满。"""
+        """表格视口尺寸变化时，让空状态提示始终铺满；首次显示时自适应列宽。"""
         from PyQt6.QtCore import QEvent
         if obj is self.view.viewport() and event.type() == QEvent.Type.Resize:
             self.empty_hint.setGeometry(self.view.viewport().rect())
+            if not self._columns_fitted and self.view.viewport().width() > 100:
+                self._fit_columns_once()
         return super().eventFilter(obj, event)
+
+    def _fit_columns_once(self):
+        """首次显示时把剩余宽度分给名称列（名称隐藏时分给最后一个可见数据列）。
+
+        之后所有列均为 Interactive，宽度完全交给用户，窗口缩放不再自动改动，
+        避免"拖 A 边界却改了 B 列"（Stretch 列抢占手柄）的问题。
+        """
+        header: QHeaderView = self.view.horizontalHeader()
+        total = sum(header.sectionSize(i) for i in range(header.count())
+                    if not header.isSectionHidden(i))
+        diff = self.view.viewport().width() - total
+        if diff > 0:
+            target = "name" if "name" in self.model.column_ids else None
+            if target is not None and not header.isSectionHidden(
+                    self.model.column_ids.index(target)):
+                li = self.model.column_ids.index(target)
+            else:
+                vis = [i for i in range(header.count()) if not header.isSectionHidden(i)
+                       and self.model.column_ids[i] != "actions"]
+                if not vis:
+                    self._columns_fitted = True
+                    return
+                li = vis[-1]
+            header.resizeSection(li, header.sectionSize(li) + diff)
+        self._columns_fitted = True
 
     # ------------------------------------------------------------------
     # 状态持久化
@@ -164,13 +192,25 @@ class TasksPage(QWidget):
         # 注意：app_config.get() 内部已做 json 解析，这里直接得到 list/dict，
         # 切勿再次 json.loads（会抛 TypeError 被吞掉，导致委托不绑定/配置不恢复）。
         state = app_config.get(COL_STATE_KEY, "")
+        # v2.3 → v2.4 一次性迁移：旧版本保存的列序中类别在名称之后（或被追加到
+        # 末尾），首次加载时把类别提到名称前；迁移后落版本标记，之后完全尊重
+        # 用户自己的拖拽顺序。
+        migrate = app_config.get("columns_version") != 2
         if isinstance(state, list) and state:
             try:
-                self._apply_column_state(state)
+                self._apply_column_state(state, migrate=migrate)
             except (ValueError, TypeError, KeyError, AttributeError):
                 self._reset_columns()
+                migrate = False
         else:
             self._reset_columns()   # 首次启动应用默认列配置
+            migrate = False
+        if migrate:
+            # 只落盘列状态与版本标记；此时 sort_state 尚未恢复，不能调
+            # _save_states()（否则会用默认排序覆盖用户保存的排序）
+            app_config.set("columns_version", 2)
+            app_config.set(COL_STATE_KEY, json.dumps(self._column_state(),
+                                                      ensure_ascii=False))
         s = app_config.get("sort_state", "")
         if isinstance(s, dict) and s:
             self.sort_key = s.get("key", "created_at")
@@ -180,6 +220,7 @@ class TasksPage(QWidget):
     def _save_states(self):
         state = self._column_state()
         app_config.set(COL_STATE_KEY, json.dumps(state, ensure_ascii=False))
+        app_config.set("columns_version", 2)
         app_config.set("sort_state", json.dumps({"key": self.sort_key, "dir": self.sort_dir}))
 
     def _column_state(self):
@@ -196,12 +237,17 @@ class TasksPage(QWidget):
             })
         return state
 
-    def _apply_column_state(self, state: list[dict]):
-        """按保存的顺序/可见性/宽度应用列配置。"""
+    def _apply_column_state(self, state: list[dict], migrate: bool = False):
+        """按保存的顺序/可见性/宽度应用列配置。migrate=True 时执行一次性列序迁移。"""
         ids = [s["id"] for s in state if s["id"] in {c[0] for c in COLUMNS}]
         for c in COLUMNS:
             if c[0] not in ids:
                 ids.append(c[0])
+        # 一次性迁移：任务类别固定置于任务名称之前（旧配置中类别在名称之后或末尾）
+        if migrate and "category" in ids and "name" in ids \
+                and ids.index("category") > ids.index("name"):
+            ids.remove("category")
+            ids.insert(ids.index("name"), "category")
         self.model.set_columns(ids)
         self._rebind_delegates()
         header: QHeaderView = self.view.horizontalHeader()
@@ -212,11 +258,9 @@ class TasksPage(QWidget):
                           if c[0] == cid), {"visible": True, "width": 120})
             header.setSectionHidden(logical, not s.get("visible", True))
             header.resizeSection(logical, int(s.get("width", 120)))
-        # 名称列弹性伸缩
-        if ids and ids[0] == "name":
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        else:
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        # 所有列统一 Interactive：每个列边界都能拖动，且拖动的就是边界左侧那一列
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self._columns_fitted = False
 
     def _rebind_delegates(self):
         for logical, cid in enumerate(self.model.column_ids):
@@ -229,7 +273,7 @@ class TasksPage(QWidget):
 
     # ------------------------------------------------------------------
     # 排序可视化
-    SORTABLE = {"name", "assignee", "deadline", "reminder_time", "status"}
+    SORTABLE = {"name", "category", "assignee", "deadline", "reminder_time", "status"}
 
     def _on_header_clicked(self, logical: int):
         """程序化推进排序循环：升序 → 降序 → 默认（通过指示器统一走
@@ -314,7 +358,8 @@ class TasksPage(QWidget):
         for logical, c in enumerate(COLUMNS):
             header.setSectionHidden(logical, not c[2])
             header.resizeSection(logical, c[3])
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self._columns_fitted = False
         self._save_states()
 
     def _on_column_moved(self, logical: int, old_visual: int, new_visual: int):

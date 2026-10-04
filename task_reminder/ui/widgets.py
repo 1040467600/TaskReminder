@@ -19,8 +19,8 @@ STATUS_COLORS = {
 
 # 列定义：(id, 标题, 默认可见, 默认宽度)
 COLUMNS = [
-    ("name", "任务名称", True, 220),
     ("category", "任务类别", True, 110),
+    ("name", "任务名称", True, 220),
     ("content", "任务内容", True, 280),
     ("assignee", "执行人", True, 100),
     ("deadline", "截止时间", True, 150),

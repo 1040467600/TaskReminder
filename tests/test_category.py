@@ -137,6 +137,55 @@ class TestMigration:
 # ---------------------------------------------------------------------------
 # UI
 class TestCategoryUi:
+    def test_category_column_before_name(self, qtbot):
+        """v2.4：任务类别列默认位于任务名称之前。"""
+        from task_reminder.ui.tasks_page import TasksPage
+        page = TasksPage()
+        qtbot.addWidget(page)
+        ids = page.model.column_ids
+        assert ids[0] == "category"
+        assert ids.index("category") < ids.index("name")
+
+    def test_legacy_column_state_moves_category_ahead_of_name(self, qtbot):
+        """v2.3 持久化的旧列序（类别在名称之后）加载后自动迁移到名称之前。"""
+        import json
+
+        from task_reminder import app_config
+        from task_reminder.ui.tasks_page import TasksPage
+        old_state = [
+            {"id": "name", "visible": True, "width": 220},
+            {"id": "content", "visible": True, "width": 280},
+            {"id": "assignee", "visible": True, "width": 100},
+            {"id": "deadline", "visible": True, "width": 150},
+            {"id": "reminder_time", "visible": True, "width": 150},
+            {"id": "status", "visible": True, "width": 96},
+            {"id": "notes", "visible": False, "width": 180},
+            {"id": "actions", "visible": True, "width": 132},
+            {"id": "category", "visible": True, "width": 110},
+        ]
+        app_config.set("column_state", json.dumps(old_state, ensure_ascii=False))
+        page = TasksPage()
+        qtbot.addWidget(page)
+        ids = page.model.column_ids
+        assert ids.index("category") == ids.index("name") - 1
+
+    def test_all_columns_interactive_and_widths_independent(self, qtbot):
+        """回归：拖动执行人边界只改执行人列，不再误改任务名称列。"""
+        from PyQt6.QtWidgets import QHeaderView
+
+        from task_reminder.ui.tasks_page import TasksPage
+        page = TasksPage()
+        qtbot.addWidget(page)
+        header = page.view.horizontalHeader()
+        assert all(header.sectionResizeMode(i) == QHeaderView.ResizeMode.Interactive
+                   for i in range(header.count()))
+        name_li = page.model.column_ids.index("name")
+        assignee_li = page.model.column_ids.index("assignee")
+        name_w_before = header.sectionSize(name_li)
+        header.resizeSection(assignee_li, header.sectionSize(assignee_li) + 40)
+        assert header.sectionSize(name_li) == name_w_before
+        assert header.sectionSize(assignee_li) > 100
+
     def test_task_dialog_save_category(self, qtbot):
         from task_reminder.ui.task_dialog import TaskDialog
         dlg = TaskDialog()

@@ -104,11 +104,11 @@ class TestConfigPersistenceRoundTrip:
         header1 = page1.view.horizontalHeader()
         header1.moveSection(0, 2)                  # sectionMoved → 自动保存
         page2 = make_page(qtbot)
-        # v2.3 起默认列序 name, category, content, …；name 拖到视觉 2 后
-        # 视觉顺序为 category, content, name, assignee…
-        assert page2.model.column_ids[0] == "category"
+        # v2.4 起默认列序 category, name, content, …；category 拖到视觉 2 后
+        # 视觉顺序为 name, content, category, assignee…
+        assert page2.model.column_ids[0] == "name"
         assert page2.model.column_ids[1] == "content"
-        assert page2.model.column_ids[2] == "name"
+        assert page2.model.column_ids[2] == "category"
 
     def test_column_visibility_roundtrip(self, qtbot):
         """隐藏 content 列 → 新实例该列仍隐藏。"""

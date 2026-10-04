@@ -77,14 +77,6 @@ def run() -> int:
         sys.__excepthook__(exc_type, exc, tb)
     sys.excepthook = _excepthook
 
-    # 启动画面：先出现品牌页，覆盖数据库初始化与主窗口构建耗时
-    from .ui.splash import show_splash
-    splash = show_splash()
-    from PyQt6.QtCore import QElapsedTimer, QThread
-    t0 = QElapsedTimer()
-    t0.start()
-    app.processEvents()
-
     db.init()
 
     from .ui.theme import apply_theme
@@ -93,17 +85,19 @@ def run() -> int:
     apply_theme(app, theme_name, font_size)
 
     from .ui.main_window import MainWindow
+    from .ui.welcome import WelcomeWindow
     win = MainWindow()
 
-    # 启动画面至少停留约 1.2s，随后交棒主窗口
-    while t0.elapsed() < 1200:
-        app.processEvents()
-        QThread.msleep(30)
-    win.show()
-    splash.finish(win)
+    # 进入界面：点击「进入系统」后才显示主窗口；直接关闭欢迎页（Esc）则退出程序
+    welcome = WelcomeWindow()
 
-    # 关闭窗口后不因托盘存在而退出
-    app.setQuitOnLastWindowClosed(False)
+    def _enter_main():
+        win.show()
+        welcome.close()
+        app.setQuitOnLastWindowClosed(False)
+
+    welcome.entered.connect(_enter_main)
+    welcome.show()
 
     def on_last_closed():
         pass

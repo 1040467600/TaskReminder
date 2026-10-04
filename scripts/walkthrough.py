@@ -142,22 +142,29 @@ def main() -> int:
     check("超页自动回退（# 已有修复）", page.page_no == 1)
 
     # 列配置：拖拽 + 持久化 + 新实例恢复（#4）
-    # v2.3 起默认视觉顺序：name, category, content, assignee, deadline, …
-    # 把名称列（视觉 0）拖到视觉 3 → category, content, assignee, name, …
+    # v2.4 起默认视觉顺序：category, name, content, assignee, deadline, …
+    # 把类别列（视觉 0）拖到视觉 3 → name, content, assignee, category, …
     header = page.view.horizontalHeader()
-    header.moveSection(0, 3)     # 把名称列拖到第 4 位
+    header.moveSection(0, 3)     # 把类别列拖到第 4 位
     app.processEvents()
     saved = page._column_state()
-    check("保存顺序反映拖拽", [s["id"] for s in saved][:4] == ["category", "content", "assignee", "name"])
+    check("保存顺序反映拖拽", [s["id"] for s in saved][:4] == ["name", "content", "assignee", "category"])
     page._save_states()
     page2 = TasksPage()
     check("新实例恢复拖拽后的列顺序",
-          page2.model.column_ids[:4] == ["category", "content", "assignee", "name"])
+          page2.model.column_ids[:4] == ["name", "content", "assignee", "category"])
     page2._reset_columns()
-    check("重置列配置", page2.model.column_ids[0] == "name")
+    check("重置列配置", page2.model.column_ids[0] == "category")
+    check("任务类别列在任务名称之前",
+          page2.model.column_ids.index("category") < page2.model.column_ids.index("name"))
     check("任务类别列默认显示", "category" in page2.model.column_ids
           and not page2.view.horizontalHeader().isSectionHidden(
               page2.model.column_ids.index("category")))
+    # 所有列均为 Interactive（每个边界都可手动调整）
+    from PyQt6.QtWidgets import QHeaderView as _QHV
+    check("全部列宽可手动调整",
+          all(page2.view.horizontalHeader().sectionResizeMode(i)
+              == _QHV.ResizeMode.Interactive for i in range(len(page2.model.column_ids))))
 
     # 每页条数同步（#5）
     page.pager._set_size(50)
@@ -277,6 +284,22 @@ def main() -> int:
     win = MainWindow()
     win.show()
     app.processEvents()
+
+    # 进入界面 / 品牌标题（v2.4）
+    from task_reminder.ui.welcome import WelcomeWindow
+    from PyQt6.QtWidgets import QLabel as _QLabel
+    welcome = WelcomeWindow()
+    _fired = []
+    welcome.entered.connect(lambda: _fired.append(1))
+    welcome.btn_enter.click()
+    check("进入按钮发出进入信号", _fired == [1])
+    check("欢迎页显示系统全称",
+          welcome.findChild(_QLabel, "welcomeTitle1").text() == "彭城派出所"
+          and welcome.findChild(_QLabel, "welcomeTitle2").text() == "任务闭环管理系统")
+    check("侧边栏仅品牌标题（无铃铛）",
+          win.findChild(_QLabel, "appBrand1") is not None
+          and win.findChild(_QLabel, "appTitle") is None)
+    welcome.close()
 
     # 设置页改轮询间隔 → 立即生效（#1）
     win.settings_page.spin_interval.setValue(9)

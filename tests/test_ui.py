@@ -29,7 +29,8 @@ class TestModel:
         m.set_tasks(repo.all_tasks())
         assert m.rowCount() == 1
         assert m.columnCount() == len(COLUMNS)
-        assert m.headerData(0, Qt.Orientation.Horizontal) == "任务名称"
+        assert m.headerData(0, Qt.Orientation.Horizontal) == "任务类别"
+        assert m.column_ids.index("name") == 1
         assert m.task_at(0).id == tid
 
     def test_summary_fallback_to_content(self, qtbot):
@@ -37,7 +38,8 @@ class TestModel:
         repo.add_task("完整任务名称", "张三", "正文", "2026-09-10 10:00", "2026-09-09 09:00")
         m = TaskTableModel()
         m.set_tasks(repo.all_tasks())
-        assert m.data(m.index(0, 0)) == "完整任务名称"
+        name_idx = m.column_ids.index("name")
+        assert m.data(m.index(0, name_idx)) == "完整任务名称"
 
     def test_content_column_displayed(self, qtbot):
         """任务表新增内容列：默认可见并显示纯文本摘要。"""
