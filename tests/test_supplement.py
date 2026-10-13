@@ -200,15 +200,15 @@ class TestDbAdvanced:
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
         assert mode in ("wal", "delete", "truncate", "persist", "memory")
 
-    def test_foreign_key_cascade(self):
-        """级联删除：删 task → history 同步删除。"""
+    def test_delete_preserves_history(self):
+        """删除 task → history 保留（不再级联删除，历史页可继续查看）。"""
         tid = mk(name="级联测试")
         repo.mark_triggered(tid)
         before = repo.list_history(1, 50)[1]
         assert before >= 1
         repo.delete_task(tid)
         after = repo.list_history(1, 50)[1]
-        assert after == before - 1
+        assert after == before  # 历史保留不删
 
 
 # ===========================================================================
@@ -236,10 +236,10 @@ class TestValidationAdvanced:
         assert repo.get_task(tid).assignee == "张三"
 
     def test_reminder_equals_deadline(self):
-        """提醒=截止 → 校验失败（必须严格早于截止）。"""
-        with pytest.raises(repo.ValidationError):
-            repo.add_task("合法名称", "张三", "x",
-                          "2026-09-10 10:00", "2026-09-10 10:00")
+        """提醒=截止 → 允许保存（不再要求严格早于截止）。"""
+        tid = repo.add_task("合法名称", "张三", "x",
+                      "2026-09-10 10:00", "2026-09-10 10:00")
+        assert tid > 0
 
 
 # ===========================================================================
@@ -487,9 +487,9 @@ class TestBackupAdvanced2:
         repo.mark_triggered(tid)
         path = str(tmp_path / "with_hist.json")
         backup.export_json(path)
-        # 清库
+        # 清库（删任务不级联删历史，历史保留）
         repo.delete_task(tid)
-        assert repo.list_history(1, 50)[1] == 0
+        assert repo.list_history(1, 50)[1] >= 1  # 历史保留
         # 恢复
         n_t, n_h = backup.import_json(path)
         assert n_h >= 1

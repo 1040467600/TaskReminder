@@ -23,7 +23,7 @@ def test_welcome_title_texts(qtbot):
     t2 = w.findChild(QLabel, "welcomeTitle2")
     assert t1.text() == "彭城派出所"
     assert t2.text() == "任务闭环管理系统"
-    assert "2.4.0" in w.findChild(QLabel, "welcomeVersion").text()
+    assert "2.4.1" in w.findChild(QLabel, "welcomeVersion").text()
 
 
 def test_welcome_enter_key(qtbot):

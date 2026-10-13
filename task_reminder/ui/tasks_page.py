@@ -144,6 +144,8 @@ class TasksPage(QWidget):
         self.pager = PaginationBar()
         try:
             page_size = int(app_config.get("page_size", 200))
+            if page_size not in (50, 100, 200, 500):
+                page_size = 200
         except (TypeError, ValueError):
             page_size = 200
         self.pager.size = max(1, page_size)
@@ -509,8 +511,7 @@ class TasksPage(QWidget):
         else:
             tasks = repository.all_tasks()
         if not tasks:
-            QMessageBox.information(self, "导出 Excel", "没有可导出的任务。")
-            return
+            QMessageBox.information(self, "导出 Excel", "没有可导出的任务，将生成仅含表头的空表。")
         default_name = f"任务导出_{__import__('datetime').datetime.now():%Y%m%d_%H%M}.xlsx"
         path, _ = QFileDialog.getSaveFileName(self, "导出 Excel", default_name,
                                               "Excel 工作簿 (*.xlsx)")
@@ -567,7 +568,11 @@ class TasksPage(QWidget):
         v.addWidget(bb)
         if dlg.exec() != 1:
             return
-        report = excel_io.import_tasks(path, strategy="overwrite" if rb_over.isChecked() else "skip")
+        try:
+            report = excel_io.import_tasks(path, strategy="overwrite" if rb_over.isChecked() else "skip")
+        except Exception as e:
+            QMessageBox.critical(self, "导入失败", f"导入文件时出错：\n{e}")
+            return
         QMessageBox.information(self, "导入完成", report.summary())
         self.page_no = 1
         self.refresh()

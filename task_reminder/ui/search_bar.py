@@ -61,7 +61,7 @@ class SearchBar(QWidget):
     changed = pyqtSignal(dict)     # 防抖后的完整条件
 
     # 高级面板中可被设置/清空的字段（用于"收起后条件仍生效"提示与重置）
-    _ADV_KEYS = ("content_kw", "assignee", "statuses", "category", "created", "deadline")
+    _ADV_KEYS = ("content_kw", "assignee", "statuses", "category", "created", "deadline", "reminder")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -144,7 +144,8 @@ class SearchBar(QWidget):
         # 日期范围：带启用开关，取消勾选即恢复"不限"。
         # 翻年按钮（« »）在弹出日历的导航栏内、翻月按钮（◀ ▶）旁。
         self._date_ranges = {}
-        for r, (label, key) in enumerate([("创建时间：", "created"), ("截止时间：", "deadline")],
+        for r, (label, key) in enumerate([("创建时间：", "created"), ("截止时间：", "deadline"),
+                                         ("提醒时间：", "reminder")],
                                          start=3):
             grid.addWidget(QLabel(label), r, 0)
             chk = QCheckBox("限定")
@@ -213,6 +214,8 @@ class SearchBar(QWidget):
             used.append("created")
         if c.get("deadline_from") or c.get("deadline_to"):
             used.append("deadline")
+        if c.get("reminder_from") or c.get("reminder_to"):
+            used.append("reminder")
         return used
 
     # ------------------------------------------------------------------
@@ -229,7 +232,7 @@ class SearchBar(QWidget):
             c["statuses"] = statuses
         if self.cmb_category.currentIndex() > 0:
             c["category"] = self.cmb_category.currentText()
-        for key in ("created", "deadline"):
+        for key in ("created", "deadline", "reminder"):
             rng = self._date_ranges[key]
             if not rng["chk"].isChecked():
                 continue
@@ -247,7 +250,7 @@ class SearchBar(QWidget):
         cat = c.get("category")
         i = self.cmb_category.findText(cat) if cat else 0
         self.cmb_category.setCurrentIndex(max(0, i))
-        for key in ("created", "deadline"):
+        for key in ("created", "deadline", "reminder"):
             rng = self._date_ranges[key]
             has = bool(c.get(f"{key}_from") or c.get(f"{key}_to"))
             rng["chk"].blockSignals(True)

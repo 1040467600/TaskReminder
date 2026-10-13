@@ -42,6 +42,18 @@ def import_json(path: str) -> tuple[int, int]:
             t["content_plain"] = html_to_plain(t.get("content") or "")
             # 兼容无类别的旧备份：缺失/非法类别回退"其他"
             t["category"] = normalize_category(t.get("category") or "")
+            # 兼容字段缺失的旧备份：补充默认值
+            t.setdefault("assignee", "")
+            t.setdefault("content", "")
+            t.setdefault("deadline", "")
+            t.setdefault("reminder_time", "")
+            t.setdefault("status", "未开始")
+            t.setdefault("notes", "")
+            t.setdefault("triggered", 0)
+            t.setdefault("status_changed_at", "")
+            now_str = fmt(datetime.now())
+            t.setdefault("created_at", now_str)
+            t.setdefault("updated_at", now_str)
             c.execute(
                 "INSERT INTO tasks(id, name, assignee, content, content_plain, deadline,"
                 " reminder_time, status, category, notes, triggered, status_changed_at,"

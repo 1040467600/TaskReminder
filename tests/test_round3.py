@@ -221,13 +221,13 @@ class TestConfigCorruptFallback:
         assert not page.view.horizontalHeader().isSectionHidden(0)
 
     def test_page_size_invalid_fallback(self, qtbot):
-        """每页条数 0 / 负数 / 非数字 → 兜底可用值，构造不崩溃。"""
+        """每页条数 0 / 负数 / 非数字 / 非法档位 → 兜底为 200，构造不崩溃。"""
         app_config.set("page_size", 0)
         page1 = make_page(qtbot)
-        assert page1.pager.size == 1
+        assert page1.pager.size == 200    # 0 不在有效档位 → 回退 200
         app_config.set("page_size", -5)
         page2 = make_page(qtbot)
-        assert page2.pager.size == 1
+        assert page2.pager.size == 200    # 负数同上
         app_config.set("page_size", "abc")
         page3 = make_page(qtbot)
         assert page3.pager.size == 200             # 非数字兜底默认 200
@@ -779,11 +779,10 @@ class TestValidationHardening:
             repo.validate_task("任务", "执行人", "内容",
                                fmt(now + timedelta(days=1)), fmt(now + timedelta(days=2)))
 
-    def test_reminder_equals_deadline_rejected(self):
-        """提醒等于截止 → ValidationError（必须严格早于）。"""
+    def test_reminder_equals_deadline_allowed(self):
+        """提醒等于截止 → 允许保存（不再要求严格早于）。"""
         t = fmt(datetime.now() + timedelta(days=1))
-        with pytest.raises(repo.ValidationError, match="提醒时间"):
-            repo.validate_task("任务", "执行人", "内容", t, t)
+        repo.validate_task("任务", "执行人", "内容", t, t)  # 不抛异常即通过
 
     def test_script_tag_in_content_stored_safe(self):
         """content 含 <script> → 存储不执行，纯文本剥离脚本内容。"""

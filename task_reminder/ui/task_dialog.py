@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from PyQt6.QtCore import QDateTime, Qt
 from PyQt6.QtGui import QFont, QTextCharFormat
-from PyQt6.QtWidgets import (QComboBox, QCompleter, QDateTimeEdit, QDialog, QFormLayout,
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDateTimeEdit, QDialog, QFormLayout,
                              QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox,
                              QPlainTextEdit, QPushButton, QTextEdit, QToolButton,
                              QVBoxLayout, QWidget)
@@ -40,6 +40,7 @@ class TaskDialog(QDialog):
         # 任务类别
         self.cmb_category = QComboBox()
         self.cmb_category.addItems(list(TaskCategory.ALL))
+        self.cmb_category.setCurrentText(TaskCategory.OTHER)
         form.addRow("任务类别：", self.cmb_category)
 
         # 执行人（历史人员自动补全）
@@ -93,17 +94,23 @@ class TaskDialog(QDialog):
         form.addRow("任务内容：", content_box)
 
         # 时间（快捷预设 + 自动联动：始终保证提醒早于截止）
+        self.chk_no_deadline = QCheckBox("无")
+        self.chk_no_deadline.toggled.connect(lambda on: self.dt_deadline.setEnabled(not on))
+        self.chk_no_deadline.toggled.connect(self._validate)
         self.dt_deadline = QDateTimeEdit()
         self.dt_deadline.setCalendarPopup(True)
         self.dt_deadline.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.dt_deadline.dateTimeChanged.connect(self._on_deadline_changed)
-        form.addRow("截止时间：", self._time_row(self.dt_deadline, deadline=True))
+        form.addRow("截止时间：", self._time_row(self.dt_deadline, self.chk_no_deadline, deadline=True))
 
+        self.chk_no_reminder = QCheckBox("无")
+        self.chk_no_reminder.toggled.connect(lambda on: self.dt_reminder.setEnabled(not on))
+        self.chk_no_reminder.toggled.connect(self._validate)
         self.dt_reminder = QDateTimeEdit()
         self.dt_reminder.setCalendarPopup(True)
         self.dt_reminder.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.dt_reminder.dateTimeChanged.connect(self._on_reminder_changed)
-        form.addRow("提醒时间：", self._time_row(self.dt_reminder, deadline=False))
+        form.addRow("提醒时间：", self._time_row(self.dt_reminder, self.chk_no_reminder, deadline=False))
 
         # 状态与备注
         self.cmb_status = QComboBox()
@@ -164,12 +171,14 @@ class TaskDialog(QDialog):
 
     # ------------------------------------------------------------------
     # 时间快捷预设与联动
-    def _time_row(self, edit: QDateTimeEdit, deadline: bool) -> QWidget:
-        """时间输入框 + '快捷 ▾' 预设菜单。"""
+    def _time_row(self, edit: QDateTimeEdit, chk: QCheckBox, deadline: bool) -> QWidget:
+        """时间输入框 + '无'复选框 + '快捷 ▾' 预设菜单。"""
         row = QWidget()
         h = QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(6)
+        h.addWidget(chk)
+        h.addWidget(edit, 1)
         btn = QToolButton()
         btn.setText("快捷 ▾")
         btn.setObjectName("btnRow")
@@ -204,10 +213,17 @@ class TaskDialog(QDialog):
         if dt is None:   # 截止前 1 小时
             base = self.dt_deadline.dateTime().toPyDateTime() - timedelta(hours=1)
             dt = max(base, datetime.now().replace(second=0, microsecond=0))
+        # 选快捷预设 → 自动取消"无"勾选
+        if deadline and self.chk_no_deadline.isChecked():
+            self.chk_no_deadline.setChecked(False)
+        elif not deadline and self.chk_no_reminder.isChecked():
+            self.chk_no_reminder.setChecked(False)
         edit.setDateTime(QDateTime(dt))
 
     def _on_deadline_changed(self, dt: QDateTime):
         # 截止被改到不晚于提醒 → 提醒自动前移 1 小时，保持"提醒早于截止"
+        if self.chk_no_reminder.isChecked():
+            return
         if dt <= self.dt_reminder.dateTime():
             self.dt_reminder.blockSignals(True)
             self.dt_reminder.setDateTime(dt.addSecs(-3600))
@@ -215,6 +231,8 @@ class TaskDialog(QDialog):
 
     def _on_reminder_changed(self, dt: QDateTime):
         # 提醒被改到不早于截止 → 截止自动后移 1 小时
+        if self.chk_no_deadline.isChecked():
+            return
         if dt >= self.dt_deadline.dateTime():
             self.dt_deadline.blockSignals(True)
             self.dt_deadline.setDateTime(dt.addSecs(3600))
@@ -235,8 +253,16 @@ class TaskDialog(QDialog):
         self.edit_name.setText(t.name)
         self.edit_assignee.setText(t.assignee)
         self.edit_content.setHtml(t.content or "")
-        self.dt_deadline.setDateTime(QDateTime.fromString(t.deadline, "yyyy-MM-dd HH:mm"))
-        self.dt_reminder.setDateTime(QDateTime.fromString(t.reminder_time, "yyyy-MM-dd HH:mm"))
+        if t.deadline:
+            self.dt_deadline.setDateTime(QDateTime.fromString(t.deadline, "yyyy-MM-dd HH:mm"))
+            self.chk_no_deadline.setChecked(False)
+        else:
+            self.chk_no_deadline.setChecked(True)
+        if t.reminder_time:
+            self.dt_reminder.setDateTime(QDateTime.fromString(t.reminder_time, "yyyy-MM-dd HH:mm"))
+            self.chk_no_reminder.setChecked(False)
+        else:
+            self.chk_no_reminder.setChecked(True)
         self.cmb_status.setCurrentText(t.status)
         self.cmb_category.setCurrentText(t.category if t.category in TaskCategory.ALL
                                          else TaskCategory.OTHER)
@@ -310,9 +336,16 @@ class TaskDialog(QDialog):
         elif len(self.edit_notes.toPlainText()) > NOTES_MAX:
             err = f"备注最多 {NOTES_MAX} 字"
         else:
-            dl, rt = self.dt_deadline.dateTime(), self.dt_reminder.dateTime()
-            if rt >= dl:
-                err = "提醒时间必须早于截止时间"
+            no_dl = self.chk_no_deadline.isChecked()
+            no_rt = self.chk_no_reminder.isChecked()
+            if no_dl and no_rt:
+                pass  # 两者都"无"，跳过时间校验
+            elif no_dl != no_rt:
+                err = "截止时间和提醒时间必须同时为空或同时设置"
+            else:
+                dl, rt = self.dt_deadline.dateTime(), self.dt_reminder.dateTime()
+                if rt > dl:
+                    err = "提醒时间必须早于截止时间"
         self.lbl_error.setText(err or "")
         self.btn_ok.setEnabled(err is None)
         return err
@@ -325,8 +358,8 @@ class TaskDialog(QDialog):
                 name=self.edit_name.text().strip(),
                 assignee=self.edit_assignee.text().strip(),
                 content=self.edit_content.toHtml(),
-                deadline=self.dt_deadline.dateTime().toString("yyyy-MM-dd HH:mm"),
-                reminder_time=self.dt_reminder.dateTime().toString("yyyy-MM-dd HH:mm"),
+                deadline="" if self.chk_no_deadline.isChecked() else self.dt_deadline.dateTime().toString("yyyy-MM-dd HH:mm"),
+                reminder_time="" if self.chk_no_reminder.isChecked() else self.dt_reminder.dateTime().toString("yyyy-MM-dd HH:mm"),
                 status=self.cmb_status.currentText(),
                 notes=self.edit_notes.toPlainText(),
                 category=self.cmb_category.currentText(),

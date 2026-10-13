@@ -44,9 +44,10 @@ class TestValidation:
         with pytest.raises(repo.ValidationError):
             repo.add_task("合法名称", "张三", "x", "2026-09-09 10:00", "2026-09-10 10:00")
 
-    def test_equal_times_rejected(self):
-        with pytest.raises(repo.ValidationError):
-            repo.add_task("合法名称", "张三", "x", "2026-09-10 10:00", "2026-09-10 10:00")
+    def test_equal_times_allowed(self):
+        """提醒=截止 → 允许保存（提醒时间不再要求严格早于截止）。"""
+        tid = repo.add_task("合法名称", "张三", "x", "2026-09-10 10:00", "2026-09-10 10:00")
+        assert tid > 0
 
     def test_content_limit(self, ):
         with pytest.raises(repo.ValidationError):

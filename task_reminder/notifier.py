@@ -170,6 +170,7 @@ class Notifier(QObject):
         task, hid = self._queue.pop(0)
         self._dialog = ReminderDialog(task, hid)
         self._dialog.accepted.connect(self._on_dialog_done)
+        self._dialog.rejected.connect(self._on_dialog_rejected)
         self._dialog.show()
         self._dialog.raise_()
         self._dialog.activateWindow()
@@ -181,6 +182,20 @@ class Notifier(QObject):
         if dlg is not None and dlg.response:
             self.responded.emit(dlg.response)
         # 队列里还有待展示的提醒 → 立即弹出下一个（否则要等下一轮轮询）
+        self.pump()
+
+    def _on_dialog_rejected(self) -> None:
+        """Esc/× 关闭弹窗：等效"关闭"，避免队列卡死。"""
+        dlg, self._dialog = self._dialog, None
+        if dlg is not None:
+            dlg.response = "close"
+            if dlg.history_id:
+                try:
+                    repository.set_history_response(dlg.history_id, "close")
+                except Exception:
+                    pass
+            self.responded.emit("close")
+        self._emit()
         self.pump()
 
     def _emit(self) -> None:

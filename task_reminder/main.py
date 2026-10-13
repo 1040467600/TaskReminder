@@ -81,7 +81,7 @@ def run() -> int:
 
     from .ui.theme import apply_theme
     theme_name = app_config.get("theme", "light")
-    font_size = int(app_config.get("font_size", 13))
+    font_size = max(11, min(22, int(app_config.get("font_size", 13))))
     apply_theme(app, theme_name, font_size)
 
     from .ui.main_window import MainWindow

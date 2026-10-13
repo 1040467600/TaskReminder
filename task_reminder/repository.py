@@ -47,12 +47,12 @@ def validate_task(name: str, assignee: str, content: str, deadline: str,
     if len(notes or "") > NOTES_MAX:
         raise ValidationError(f"备注最多 {NOTES_MAX} 字符")
     dl = parse(deadline)
-    if not dl:
-        raise ValidationError("截止时间无效")
     rt = parse(reminder_time)
-    if not rt:
-        raise ValidationError("提醒时间无效")
-    if rt >= dl:
+    if dl is None and rt is None:
+        pass  # 两者都空：无截止/提醒时间的任务（不参与提醒轮询）
+    elif dl is None or rt is None:
+        raise ValidationError("截止时间和提醒时间必须同时为空或同时设置")
+    elif rt > dl:
         raise ValidationError("提醒时间必须早于截止时间")
 
 
@@ -108,7 +108,10 @@ def update_task(task_id: int, name: str, assignee: str, content: str, deadline: 
 def set_status(task_id: int, status: str) -> None:
     if status not in TaskStatus.ALL:
         raise ValidationError("无效的任务状态")
-    update_task(task_id, **_task_kwargs(get_task(task_id)), status=status)
+    t = get_task(task_id)
+    if t is None:
+        return  # 任务已被删除，静默忽略
+    update_task(task_id, **_task_kwargs(t), status=status)
 
 
 def _task_kwargs(t: Task) -> dict:
@@ -117,9 +120,9 @@ def _task_kwargs(t: Task) -> dict:
 
 
 def delete_task(task_id: int) -> None:
+    # 仅删除任务本身，保留提醒历史快照（历史页可继续查看）
     with db.transaction() as c:
         c.execute("DELETE FROM tasks WHERE id=?", (task_id,))
-        c.execute("DELETE FROM reminder_history WHERE task_id=?", (task_id,))
 
 
 def delete_tasks(ids: Iterable[int]) -> int:
@@ -237,7 +240,8 @@ def due_for_reminder(now: Optional[datetime] = None, limit: Optional[int] = None
     最近的提醒），其余留到下一轮；无 limit 时按时间正序返回全部。
     """
     now = now or datetime.now()
-    sql = ("SELECT * FROM tasks WHERE triggered=0 AND status != ? AND reminder_time <= ?"
+    sql = ("SELECT * FROM tasks WHERE triggered=0 AND status != ?"
+           " AND reminder_time != '' AND reminder_time <= ?"
            " ORDER BY reminder_time " + ("DESC LIMIT ?" if limit else "ASC"))
     args: tuple = (TaskStatus.DONE, fmt(now), limit) if limit else (TaskStatus.DONE, fmt(now))
     rows = db.get_conn().execute(sql, args).fetchall()
@@ -337,7 +341,7 @@ def stats(now: Optional[datetime] = None) -> dict:
         by_status[r["status"]] = r["n"]
     now_s = fmt(now)
     overdue = c.execute(
-        "SELECT COUNT(*) FROM tasks WHERE status != ? AND deadline < ?",
+        "SELECT COUNT(*) FROM tasks WHERE status != ? AND deadline != '' AND deadline < ?",
         (TaskStatus.DONE, now_s),
     ).fetchone()[0]
     week_end = fmt(now + timedelta(days=7))
@@ -368,7 +372,7 @@ def upcoming_reminders(limit: int = 10) -> list[Task]:
 def overdue_tasks(limit: int = 10) -> list[Task]:
     now_s = _now()
     rows = db.get_conn().execute(
-        "SELECT * FROM tasks WHERE status != ? AND deadline < ? ORDER BY deadline ASC LIMIT ?",
+        "SELECT * FROM tasks WHERE status != ? AND deadline != '' AND deadline < ? ORDER BY deadline ASC LIMIT ?",
         (TaskStatus.DONE, now_s, limit),
     ).fetchall()
     return [Task.from_row(r) for r in rows]
