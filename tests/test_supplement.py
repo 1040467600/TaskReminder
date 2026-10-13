@@ -529,7 +529,7 @@ class TestExcelAdvanced:
         assert {"任务名称", "执行人"} <= set(header)
 
     def test_import_mixed_valid_invalid(self, tmp_path):
-        """混合有效/无效行 → added=3、errors=2。"""
+        """混合有效/无效行 → 双空时间 v2.4.1 起合法；单空/坏格式仍报错。"""
         from task_reminder.excel_io import import_tasks
         from openpyxl import Workbook
         path = str(tmp_path / "mixed.xlsx")
@@ -541,13 +541,17 @@ class TestExcelAdvanced:
         for i in range(3):
             ws.append([f"有效任务{i}", "张三", "内容", "2026-09-10 10:00",
                        "2026-09-09 10:00", "未开始", "", ""])
-        # 2 条无效（缺截止时间）
+        # 2 条双空时间（v2.4.1 起合法：无截止/提醒时间的任务）
         for i in range(2):
-            ws.append([f"无效任务{i}", "李四", "内容", "", "", "未开始", "", ""])
+            ws.append([f"无时间任务{i}", "李四", "内容", "", "", "未开始", "", ""])
+        # 1 条只填截止（无效：必须同时为空或同时填写）
+        ws.append(["单空任务", "王五", "内容", "2026-09-10 10:00", "", "未开始", "", ""])
+        # 1 条时间格式无法识别（无效）
+        ws.append(["坏格式任务", "赵六", "内容", "明天下午", "后天", "未开始", "", ""])
         wb.save(path)
         report = import_tasks(path)
-        assert report.added == 3
-        assert len(report.errors) == 2
+        assert report.added == 5          # 3 有时间 + 2 双空
+        assert len(report.errors) == 2    # 单空 + 坏格式
 
     def test_import_no_header(self, tmp_path):
         """无表头导入 → 所有行无法识别列名，added=0。"""

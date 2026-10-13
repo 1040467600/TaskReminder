@@ -77,7 +77,15 @@ def run() -> int:
         sys.__excepthook__(exc_type, exc, tb)
     sys.excepthook = _excepthook
 
-    db.init()
+    try:
+        db.init()
+    except Exception as e:
+        logging.getLogger("task_reminder").error("数据库初始化失败", exc_info=True)
+        QMessageBox.critical(
+            None, APP_NAME,
+            f"数据库无法打开：\n{e}\n\n数据文件可能已损坏，请从「设置 → 备份恢复」的备份文件恢复，"
+            "或联系管理员处理。")
+        return 1
 
     from .ui.theme import apply_theme
     theme_name = app_config.get("theme", "light")
@@ -98,6 +106,20 @@ def run() -> int:
 
     welcome.entered.connect(_enter_main)
     welcome.show()
+
+    # 第二个实例启动时（QLocalSocket 连入）把已有窗口带到最前
+    def _on_second_instance():
+        sock = server.nextPendingConnection()
+        if sock is not None:
+            sock.disconnectFromServer()
+        target = win if win.isVisible() else welcome
+        if target.isMinimized():
+            target.showNormal()
+        target.show()
+        target.raise_()
+        target.activateWindow()
+
+    server.newConnection.connect(_on_second_instance)
 
     def on_last_closed():
         pass

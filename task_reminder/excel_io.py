@@ -211,14 +211,18 @@ def import_tasks(path: str, strategy: str = "skip") -> ImportReport:
             name = row["name"]
             assignee = row["assignee"]
             content = row["content"]
+            blank_dl = row["deadline"] is None or str(row["deadline"]).strip() == ""
+            blank_rm = row["reminder_time"] is None or str(row["reminder_time"]).strip() == ""
             deadline = _cell_time(row["deadline"])
             reminder = _cell_time(row["reminder_time"])
             if not name or not assignee:
                 raise ValueError("任务名称/执行人为空")
-            if deadline is None:
-                raise ValueError("截止时间缺失或格式无法识别")
-            if reminder is None:
-                raise ValueError("提醒时间缺失或格式无法识别")
+            if blank_dl and blank_rm:
+                deadline, reminder = "", ""          # 无截止/提醒时间的任务（v2.4.1）
+            elif blank_dl != blank_rm:
+                raise ValueError("截止时间和提醒时间必须同时为空或同时填写")
+            elif deadline is None or reminder is None:
+                raise ValueError("截止/提醒时间格式无法识别")
             status = row["status"]
             if status not in TaskStatus.ALL:
                 status = STATUS_DEFAULT

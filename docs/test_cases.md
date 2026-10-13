@@ -673,5 +673,36 @@
 
 - **自动化测试全绿**：pytest 470+1skip / walkthrough 76，修复后回归验证全部通过。
 - **人工代码审查发现 15 条缺陷**：**全部 15 条已修复**，0 条延后。
-- **已知限制**：TC-SHELL-09（单实例未带起原窗口）、TC-ENV-05（explorer 重启托盘不恢复）为设计限制，非缺陷。
+- **已知限制**：TC-ENV-05（explorer 重启托盘不恢复）为设计限制，非缺陷。
 - **建议**：全部缺陷已修复并回归通过，可发布 v2.4.1。
+
+### 11.7 第二轮测试（v2.4.1 发布后回归，2026-10-13）
+
+**目的**：①为 15 条修复建立自动化守护；②清理 9 条待验证（RISK）项。
+
+**新增自动化资产**：
+- 新增 [tests/test_v241_fixes.py](file:///d:/code/trae/task_demo/tests/test_v241_fixes.py) **31 条**针对性回归测试
+- walkthrough 从 76 项扩到 **100 项**（Esc 队列、无时间任务、提醒范围、空库导出、损坏 xlsx、缺字段备份、屏幕外位置等）
+- 全量结果：**pytest 501 通过 + 1 跳过 / walkthrough 100 通过 + 0 失败**
+
+**9 条待验证项处置结果**：
+
+| 编号 | 处置 | 说明 |
+|---|---|---|
+| TC-START-10 | ✅ 通过 | v2.4.1 安装包静默安装后 offscreen 启动存活 6s，欢迎页不崩溃（发布 E2E 已取证） |
+| TC-SHELL-09 | 🔧 已修复 | 第二实例连入时 `QLocalServer.newConnection` 把已有窗口（主窗口或欢迎页）恢复并前置（[main.py:110-122](file:///d:/code/trae/task_demo/task_reminder/main.py#L110-L122)）；信号机制有自动化测试守护 |
+| TC-ENV-02 | ⚠️ 已知限制 | 睡眠/休眠唤醒由 OS 调度决定，无法在 CI 验证；代码层 tick 独立补偿，唤醒后下一轮询会查出全部到期任务（含 MAX_PER_TICK 分批），不丢提醒 |
+| TC-ENV-05 | ⚠️ 已知限制 | Qt 托盘图标不监听 TaskbarCreated 广播，explorer 重启后图标不自动恢复（重启应用即可）；属设计限制 |
+| TC-DISP-02 / TC-DISP-04 / TC-CFG-01 | 🔧 已修复 | 窗口恢复时校验记忆几何是否与任一屏幕相交，副屏断开/负坐标/超大值均回到主屏居中（[main_window.py:293-312](file:///d:/code/trae/task_demo/task_reminder/ui/main_window.py#L293-L312)）；正/负两组越界坐标有测试守护 |
+| TC-CONC-02 | 🔧 已修复 | 连接加 `PRAGMA busy_timeout=3000`，写锁冲突等待 3s 而非立刻 OperationalError（[db.py:34](file:///d:/code/trae/task_demo/task_reminder/db.py#L34)） |
+| TC-CONC-03 | ✅ 验证无缺陷 | 复查代码 `update_task` 已用 `old is None or old.status != status` 短路保护，编辑中被删不会 AttributeError；补回归测试锁死该行为 |
+| TC-BOUND-24 | ✅ 通过 | 1000 条数据实测：首页查询 <2s、TasksPage.refresh <3s、行/分页计数正确（自动化计时断言） |
+| TC-PATH-04 | 🔧 已修复 | `db.init` 对非 SQLite 文件抛 `DatabaseError` 已定性；main 入口捕获后弹友好错误框提示恢复备份，不再闪退（[main.py:80-88](file:///d:/code/trae/task_demo/task_reminder/main.py#L80-L88)） |
+
+**第二轮新发现并修复的联动缺陷（1 条）**：
+
+| 编号 | 级别 | 缺陷 | 修复 |
+|---|---|---|---|
+| TC-XLSL-17（新增） | P1 | v2.4.1 的"无时间任务"导出 Excel 后无法导回：`excel_io.import_tasks` 把空截止/提醒一律当错误行 | [excel_io.py:214-225](file:///d:/code/trae/task_demo/task_reminder/excel_io.py#L214-L225)：双空→合法空时间；只空一个→报错；非空但格式错→报错。新增 Excel 往返测试 |
+
+**第二轮结论**：306 条用例中 **303 条通过、0 条失败、3 条确认为环境相关已知限制**（TC-ENV-02、TC-ENV-05，以及真实多显示器/勿扰等需人工真机确认项）；两轮共修复缺陷 **16 条**（第一轮 15 + 第二轮联动 1），并对其中 4 条原 RISK 项做了健壮性增强。

@@ -31,6 +31,7 @@ def init(db_path: Optional[str] = None) -> sqlite3.Connection:
     _conn.row_factory = sqlite3.Row
     _conn.execute("PRAGMA synchronous=NORMAL")
     _conn.execute("PRAGMA foreign_keys=ON")
+    _conn.execute("PRAGMA busy_timeout=3000")  # 多进程/外部占用时写锁等待 3s，而非立刻 OperationalError
     ensure_schema(_conn)
     return _conn
 

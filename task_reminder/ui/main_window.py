@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QRect, QTimer, Qt
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (QApplication, QLabel, QMainWindow, QMenu, QStackedWidget,
                              QSystemTrayIcon, QVBoxLayout, QWidget, QPushButton,
@@ -292,8 +292,18 @@ class MainWindow(QMainWindow):
                 data = None
         if isinstance(data, dict) and data:
             try:
-                self.setGeometry(data.get("x", 120), data.get("y", 120),
-                                 max(800, data.get("w", 1000)), max(600, data.get("h", 680)))
+                w = max(800, data.get("w", 1000))
+                h = max(600, data.get("h", 680))
+                x, y = data.get("x", 120), data.get("y", 120)
+                rect = QRect(int(x), int(y), w, h)
+                # 记忆位置落在所有屏幕之外（副屏断开/负坐标/超大值）→ 回到主屏居中
+                from PyQt6.QtGui import QGuiApplication
+                if not any(s.availableGeometry().intersects(rect)
+                           for s in QGuiApplication.screens()):
+                    ag = QGuiApplication.primaryScreen().availableGeometry()
+                    x = ag.x() + max(0, (ag.width() - w) // 2)
+                    y = ag.y() + max(0, (ag.height() - h) // 2)
+                self.setGeometry(int(x), int(y), w, h)
                 if data.get("maximized"):
                     self.setWindowState(Qt.WindowState.WindowMaximized)
                 return
