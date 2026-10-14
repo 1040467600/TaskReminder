@@ -706,3 +706,22 @@
 | TC-XLSL-17（新增） | P1 | v2.4.1 的"无时间任务"导出 Excel 后无法导回：`excel_io.import_tasks` 把空截止/提醒一律当错误行 | [excel_io.py:214-225](file:///d:/code/trae/task_demo/task_reminder/excel_io.py#L214-L225)：双空→合法空时间；只空一个→报错；非空但格式错→报错。新增 Excel 往返测试 |
 
 **第二轮结论**：306 条用例中 **303 条通过、0 条失败、3 条确认为环境相关已知限制**（TC-ENV-02、TC-ENV-05，以及真实多显示器/勿扰等需人工真机确认项）；两轮共修复缺陷 **16 条**（第一轮 15 + 第二轮联动 1），并对其中 4 条原 RISK 项做了健壮性增强。
+
+### 11.8 第三轮测试（v2.4.2 发布后补充覆盖，2026-10-14）
+
+**目的**：在 v2.4.2 发布后，针对前两轮未覆盖的代码路径补充自动化用例，提升回归守护密度。
+
+**新增测试文件**：[tests/test_v242_additional.py](file:///d:/code/trae/task_demo/tests/test_v242_additional.py)（**55 条**，全部通过）
+
+覆盖模块与要点：
+
+| 模块 | 新增用例数 | 覆盖点 |
+|---|---|---|
+| models.py | 18 | `html_to_plain`（空/纯文本/标签剥离/br 换行/script-style 移除/实体解码/未知实体）、`plain_len`、`parse`（空/T 分隔/含秒/仅日期/非法）、`Task.plain_text`（落库优先/回退 HTML）、`Task.summary`（名称优先/内容回退/超长截断）、`Task.is_overdue`（过期未完成/已完成不过期/未来不过期/空截止不过期）、`ReminderLog.response_text`（已知响应/未知透传） |
+| notifier.py | 8 | `remaining_text`（空/非法/未来剩余/已过期天数）、`Notifier.pending_count`（空/有队列）、`notify_batch` 空列表 no-op、`ReminderDialog._snooze`（提醒顺延 + triggered 重置 0） |
+| app_config.py | 8 | `get` 默认值/回退值、`set/get` 类型往返（int/bool/list/dict）、覆盖写入、`assets_dir` 含资源、`assets_dir` 打包态 `_MEIPASS`、`default_sound` 指向 chime.wav、`built_in_sounds` 三音效文件存在 |
+| db.py | 4 | `busy_timeout>=3000`、`close` 后 `get_conn` 自愈重建、`db_path` 匹配 init 路径、`foreign_keys=ON` |
+| backup.py | 4 | 非法 format 抛 ValueError、导出自动建父目录、历史往返（含 response 字段恢复）、同 id upsert 更新而非重复 |
+| repository.py | 13 | `delete_history_row`（不存在返 False/存在返 True）、`stats` 状态分布 + overdue 计数、`list_history` 日期范围过滤、`find_duplicate`（名称+执行人+截止三元组）、`validate_task` 名称长度边界 1/0/50/51、`overdue_tasks` 排除空截止 |
+
+**回归结果**：pytest **556 通过 + 1 跳过**（501 → 556，+55），walkthrough **100 通过 / 0 失败**，0 失败。未修改生产代码，仅补充测试。
