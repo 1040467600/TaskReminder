@@ -739,3 +739,19 @@
 | widgets.py | 8 | PaginationBar 同页不发信号、越下界钳到 1、越上界钳到末页、末页禁用下一页、首页禁用上一页、0 条状态、ActionDelegate 点击按钮间隙返回 False 且不发信号 |
 
 **回归结果**：pytest **589 通过 + 1 跳过**（556 → 589，+33），walkthrough **100 通过 / 0 失败**。未修改生产代码。
+
+### 11.10 第五轮测试（配置边界 / 状态流转 / 行过滤 / 事务，2026-10-14）
+
+**目的**：补充 app_config 序列化边界、repository 状态流转（triggered 重置逻辑）、excel_io 行过滤、tasks_page 排序/列配置持久化、db 事务提交等路径。
+
+**新增测试文件**：[tests/test_v242_round5.py](file:///d:/code/trae/task_demo/tests/test_v242_round5.py)（**21 条**，全部通过）
+
+| 模块 | 用例数 | 覆盖点 |
+|---|---|---|
+| app_config.py | 7 | `set(None)`→get 返回 None、JSON 字符串 "123" 被解析为 int、非 JSON 字符串原样返回、空字符串、bool true/false、`first_run_done` 默认 False、覆盖写入 |
+| tasks_page.py | 6 | `current_sort_text` 默认/升序▲/降序▼、actions 非排序列点击不改变排序、`_toggle_column` 持久化到 app_config、`_reset_columns` 恢复默认隐藏 |
+| repository.py | 4 | update_task 同步 content_plain、更新到 DONE 设 triggered=1、DONE→未开始且提醒未来重置 triggered=0、DONE→未开始但提醒已过保持 triggered=1 |
+| excel_io.py | 3 | read_rows 跳过"导出时间"元信息行、跳过全空行、稀疏行（有名称无执行人/截止）保留 |
+| db.py | 1 | transaction 成功路径提交后数据持久可见 |
+
+**回归结果**：pytest **610 通过 + 1 跳过**（589 → 610，+21），walkthrough **100 通过 / 0 失败**。未修改生产代码。
