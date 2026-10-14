@@ -725,3 +725,17 @@
 | repository.py | 13 | `delete_history_row`（不存在返 False/存在返 True）、`stats` 状态分布 + overdue 计数、`list_history` 日期范围过滤、`find_duplicate`（名称+执行人+截止三元组）、`validate_task` 名称长度边界 1/0/50/51、`overdue_tasks` 排除空截止 |
 
 **回归结果**：pytest **556 通过 + 1 跳过**（501 → 556，+55），walkthrough **100 通过 / 0 失败**，0 失败。未修改生产代码，仅补充测试。
+
+### 11.9 第四轮测试（UI 数据层与主题，2026-10-14）
+
+**目的**：补充 UI 纯逻辑层（TaskTableModel 数据角色、theme 字号钳制、PaginationBar 信号边界）的覆盖空白。
+
+**新增测试文件**：[tests/test_v242_round4.py](file:///d:/code/trae/task_demo/tests/test_v242_round4.py)（**33 条**，全部通过）
+
+| 模块 | 用例数 | 覆盖点 |
+|---|---|---|
+| task_table_model.py | 17 | content 列 80 字截断+省略号、80 字内无省略、空内容回退备注、换行转空格、category 空→"其他"、UserRole status/actions/其他列、actions DisplayRole=None、deadline 过期前景红 `#DC2626`、未过期前景 None、reminder_time 过期前景、status/category 居中对齐、name 无对齐、ToolTip 含关键字段、垂直 header 返回 None、set_columns 改列序 |
+| theme.py | 8 | 字号 <11 钳制到 11、>22 钳制到 22、范围内不变、dark 含 `#0F172A`、light 含 `#F5F7FA`、派生字号 FS_S/FS_T/FS_XT、check.png 路径注入、apply_theme 设 stylesheet+font |
+| widgets.py | 8 | PaginationBar 同页不发信号、越下界钳到 1、越上界钳到末页、末页禁用下一页、首页禁用上一页、0 条状态、ActionDelegate 点击按钮间隙返回 False 且不发信号 |
+
+**回归结果**：pytest **589 通过 + 1 跳过**（556 → 589，+33），walkthrough **100 通过 / 0 失败**。未修改生产代码。
