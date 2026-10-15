@@ -17,8 +17,8 @@ if (-not (Test-Path $Py)) { $Py = "python" }
 Remove-Item Env:PYTHONDONTWRITEBYTECODE -ErrorAction SilentlyContinue
 
 $AppName = (& $Py (Join-Path $PSScriptRoot "print_app_name.py")).Trim()
-if (-not $AppName) { Write-Host "failed to resolve app name"; exit 1 }
-$SetupName = "$AppName`u{5b89}`u{88c5}`u{5305}"   # 安装包
+$SetupName = (& $Py (Join-Path $PSScriptRoot "print_app_name.py") "--setup").Trim()
+if (-not $AppName -or -not $SetupName) { Write-Host "failed to resolve app name"; exit 1 }
 Write-Host "app name: $AppName / setup: $SetupName" -ForegroundColor Yellow
 
 Write-Host "==> 1. Generate assets (icon/sound)" -ForegroundColor Cyan
