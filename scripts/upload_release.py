@@ -39,7 +39,8 @@ RELEASE_NOTES = """## v2.4.3 软件显示名称中文化
 ### 质量
 - 自动化测试 610 项 pytest（1 项跳过）+ 100 项全链路走查，全部通过
 
-**附件**：`彭城派出所任务闭环管理系统安装包.exe` 为安装包（推荐，支持静默安装 `/S`），`彭城派出所任务闭环管理系统.exe` 为单文件便携版。
+**附件**：`TaskReminderSetup.exe` 为安装包（推荐，支持静默安装 `/S`），`TaskReminder.exe` 为单文件便携版。
+（GitHub 附件名不支持中文字符，下载文件名保持英文；安装/运行后软件各处显示均为「彭城派出所任务闭环管理系统」。）
 """
 
 
@@ -83,8 +84,10 @@ def api(method: str, url: str, token: str, body=None, content_type="application/
 def main(tag: str) -> int:
     root = Path(__file__).resolve().parent.parent
     app_name = "彭城派出所任务闭环管理系统"
-    assets = [root / "dist" / f"{app_name}安装包.exe", root / "dist" / f"{app_name}.exe"]
-    for a in assets:
+    # 本地产物为中文名；GitHub 附件名不支持中文（会被强制改为 default.exe），上传时用英文名
+    assets = [(root / "dist" / f"{app_name}安装包.exe", "TaskReminderSetup.exe"),
+              (root / "dist" / f"{app_name}.exe", "TaskReminder.exe")]
+    for a, _ in assets:
         if not a.exists():
             raise SystemExit(f"缺少附件：{a}")
 
@@ -109,9 +112,8 @@ def main(tag: str) -> int:
 
     # 2. 逐个附件：同名且大小一致则跳过，否则删旧传新
     existing = {a["name"]: a for a in rel.get("assets", [])}
-    for path in assets:
+    for path, name in assets:
         local_size = path.stat().st_size
-        name = path.name
         old = existing.get(name)
         if old and old["state"] == "uploaded" and old["size"] == local_size:
             print(f"[skip] {name} 已存在且大小一致（{local_size/MB:.1f} MB）")
