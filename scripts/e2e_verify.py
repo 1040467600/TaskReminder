@@ -13,7 +13,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
-INST_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Programs" / "TaskReminder"
+APP_NAME = "彭城派出所任务闭环管理系统"
+SETUP_NAME = f"{APP_NAME}安装包"
+INST_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Programs" / APP_NAME
 
 
 def run(cmd, **kw):
@@ -44,17 +46,17 @@ def check_startup(exe: Path, name: str) -> bool:
 def main() -> int:
     ok = True
 
-    ok &= check_startup(DIST / "TaskReminder" / "TaskReminder.exe", "onedir 主程序")
-    ok &= check_startup(DIST / "TaskReminder.exe", "onefile 便携版")
+    ok &= check_startup(DIST / APP_NAME / f"{APP_NAME}.exe", "onedir 主程序")
+    ok &= check_startup(DIST / f"{APP_NAME}.exe", "onefile 便携版")
 
-    setup = DIST / "TaskReminderSetup.exe"
+    setup = DIST / f"{SETUP_NAME}.exe"
     if INST_DIR.exists():
         subprocess.run(["cmd", "/c", "rd", "/s", "/q", str(INST_DIR)], capture_output=True)
 
     print("== 静默安装 ==")
     r = run([str(setup), "/S"])
     time.sleep(2)
-    installed = INST_DIR / "TaskReminder.exe"
+    installed = INST_DIR / f"{APP_NAME}.exe"
     if installed.exists():
         print(f"[PASS] 静默安装完成：{installed}")
     else:

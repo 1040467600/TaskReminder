@@ -1,6 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller onedir 构建配置：dist\TaskReminder\TaskReminder.exe"""
+"""PyInstaller onedir 构建配置：dist\\彭城派出所任务闭环管理系统\\彭城派出所任务闭环管理系统.exe"""
 from PyInstaller.utils.hooks import collect_submodules
+
+APP_NAME = '彭城派出所任务闭环管理系统'
 
 hidden = collect_submodules('PyQt6.QtMultimedia')
 
@@ -23,7 +25,8 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='TaskReminder',
+    name=APP_NAME,
+    version='build\\version_info.txt',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -38,5 +41,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name='TaskReminder',
+    name=APP_NAME,
 )

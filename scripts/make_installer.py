@@ -1,9 +1,9 @@
-"""TaskReminder 自包含安装器。
+"""彭城派出所任务闭环管理系统 自包含安装器。
 
-本脚本由 PyInstaller 打包为 dist\\TaskReminderSetup.exe（onefile, windowed），
+本脚本由 PyInstaller 打包为 dist\\彭城派出所任务闭环管理系统安装包.exe（onefile, windowed），
 payload zip 通过 --add-data 嵌入。支持：
 - GUI 向导：选择安装目录、创建桌面/开始菜单快捷方式
-- /S        静默安装（默认目录 %LOCALAPPDATA%\\Programs\\TaskReminder）
+- /S        静默安装（默认目录 %LOCALAPPDATA%\\Programs\\彭城派出所任务闭环管理系统）
 - --uninstall  静默卸载（读取注册表 InstallLocation）
 """
 from __future__ import annotations
@@ -17,9 +17,10 @@ import winreg
 import zipfile
 from pathlib import Path
 
-APP_NAME = "TaskReminder"
+APP_NAME = "彭城派出所任务闭环管理系统"
 DISPLAY_NAME = "彭城派出所任务闭环管理系统"
-PUBLISHER = "TaskReminder Project"
+PUBLISHER = "彭城派出所"
+# 注册表键名保持英文不变：与历史版本共用同一卸载项，升级时覆盖而非并列堆积
 REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\TaskReminder"
 SILENT_FLAGS = ("/S", "-S", "/s")
 

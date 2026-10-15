@@ -22,22 +22,24 @@ UPLOAD = "https://uploads.github.com"
 TIMEOUT = 600
 MB = 1024 * 1024
 
-RELEASE_NOTES = """## v2.4.2 第二轮测试回归与健壮性增强
+RELEASE_NOTES = """## v2.4.3 软件显示名称中文化
 
-v2.4.1 发布后第二轮全量回归：为 15 条修复建立自动化守护，并清理全部待验证环境项。
+应使用单位要求，将软件显示名称全面中文化：程序文件、安装目录、任务管理器进程描述、文件属性、Release 附件均显示为「彭城派出所任务闭环管理系统」。
 
-### 修复
-- **第二实例未带起已有窗口**：再次启动程序时，已运行的主窗口/欢迎页现在会恢复并前置显示
-- **副屏断开后窗口丢失**：记忆的窗口位置若已不在任何屏幕内（拔显示器、异常坐标），自动回到主屏居中
-- **双进程同时写库偶发报错**：数据库连接加 3 秒写锁等待（busy_timeout），降低并发写入冲突
-- **数据库文件损坏时启动闪退**：改为弹出友好错误提示，可从备份恢复
-- **无时间任务 Excel 导入被拒**：v2.4.1 新增的无截止/无提醒任务导出后可正常导回；只填一项时间仍会被正确拒绝
+### 变更
+- **程序文件名**：`TaskReminder.exe` → `彭城派出所任务闭环管理系统.exe`；安装包 → `彭城派出所任务闭环管理系统安装包.exe`
+- **默认安装目录**：`%LOCALAPPDATA%\\Programs\\彭城派出所任务闭环管理系统`
+- **任务管理器/文件属性**：新增版本资源，文件描述、产品名、版本号均显示中文（此前进程仅显示英文文件名）
+- **发布者**：彭城派出所
+
+### 兼容性说明（重要）
+- **数据目录保持不变**：数据库仍在 `%APPDATA%\\TaskReminder\\tasks.db`，升级后历史任务、提醒记录、设置全部保留，无需迁移
+- 卸载注册表键沿用历史键名，覆盖安装时旧版卸载项被替换而非并列堆积
 
 ### 质量
-- 自动化测试 501 项 pytest（1 项跳过）+ 100 项全链路走查，全部通过
-- 第二轮测试报告详见 docs/test_cases.md 第 11.7 节
+- 自动化测试 610 项 pytest（1 项跳过）+ 100 项全链路走查，全部通过
 
-**附件**：`TaskReminderSetup.exe` 为安装包（推荐，支持静默安装 `/S`），`TaskReminder.exe` 为单文件便携版。
+**附件**：`彭城派出所任务闭环管理系统安装包.exe` 为安装包（推荐，支持静默安装 `/S`），`彭城派出所任务闭环管理系统.exe` 为单文件便携版。
 """
 
 
@@ -80,7 +82,8 @@ def api(method: str, url: str, token: str, body=None, content_type="application/
 
 def main(tag: str) -> int:
     root = Path(__file__).resolve().parent.parent
-    assets = [root / "dist" / "TaskReminderSetup.exe", root / "dist" / "TaskReminder.exe"]
+    app_name = "彭城派出所任务闭环管理系统"
+    assets = [root / "dist" / f"{app_name}安装包.exe", root / "dist" / f"{app_name}.exe"]
     for a in assets:
         if not a.exists():
             raise SystemExit(f"缺少附件：{a}")

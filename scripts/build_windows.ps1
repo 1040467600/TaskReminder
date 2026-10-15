@@ -1,8 +1,9 @@
 # TaskReminder Windows one-click build script (ASCII only).
+# App/display names come from scripts\print_app_name.py (task_reminder.APP_NAME).
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 #   powershell ... build_windows.ps1 -Onefile        # also build portable exe
-#   powershell ... build_windows.ps1 -SkipInstaller  # skip TaskReminderSetup.exe
+#   powershell ... build_windows.ps1 -SkipInstaller  # skip setup exe
 param(
     [switch]$Onefile,
     [switch]$SkipInstaller
@@ -15,8 +16,17 @@ if (-not (Test-Path $Py)) { $Py = "python" }
 # PyInstaller needs to write __pycache__; make sure the env var is cleared.
 Remove-Item Env:PYTHONDONTWRITEBYTECODE -ErrorAction SilentlyContinue
 
+$AppName = (& $Py (Join-Path $PSScriptRoot "print_app_name.py")).Trim()
+if (-not $AppName) { Write-Host "failed to resolve app name"; exit 1 }
+$SetupName = "$AppName`u{5b89}`u{88c5}`u{5305}"   # 安装包
+Write-Host "app name: $AppName / setup: $SetupName" -ForegroundColor Yellow
+
 Write-Host "==> 1. Generate assets (icon/sound)" -ForegroundColor Cyan
 & $Py (Join-Path $PSScriptRoot "gen_assets.py")
+if ($LASTEXITCODE -ne 0) { exit 1 }
+
+Write-Host "==> 1.5 Generate version info (version resource for exe metadata)" -ForegroundColor Cyan
+& $Py (Join-Path $PSScriptRoot "gen_version_info.py")
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 Write-Host "==> 2. PyInstaller build (onedir)" -ForegroundColor Cyan
@@ -28,7 +38,8 @@ Pop-Location
 if ($Onefile) {
     Write-Host "==> 3. PyInstaller build (onefile portable)" -ForegroundColor Cyan
     Push-Location $Root
-    & $Py -m PyInstaller --noconfirm --onefile --windowed --name TaskReminder `
+    & $Py -m PyInstaller --noconfirm --onefile --windowed --name $AppName `
+        --version-file "build\version_info.txt" `
         --icon "app.ico" --add-data "task_reminder\assets;assets" `
         --hidden-import PyQt6.QtMultimedia "run.py"
     if ($LASTEXITCODE -ne 0) { Pop-Location; exit 1 }
@@ -39,7 +50,7 @@ if (-not $SkipInstaller) {
     Write-Host "==> 4. Build self-contained installer" -ForegroundColor Cyan
     $Zip = Join-Path $Root "build\installer_payload.zip"
     if (Test-Path $Zip) { Remove-Item $Zip -Force }
-    Compress-Archive -Path (Join-Path $Root "dist\TaskReminder\*") -DestinationPath $Zip
+    Compress-Archive -Path (Join-Path $Root "dist\$AppName\*") -DestinationPath $Zip
 
     # version file for the installer（脚本文件取版本，避免 -c 引号/参数传递问题）
     $Ver = & $Py (Join-Path $PSScriptRoot "print_version.py")
@@ -48,7 +59,8 @@ if (-not $SkipInstaller) {
     Set-Content -Path (Join-Path $Root "build\app_version.txt") -Value $Ver -NoNewline -Encoding Ascii
 
     Push-Location $Root
-    & $Py -m PyInstaller --noconfirm --onefile --windowed --name TaskReminderSetup `
+    & $Py -m PyInstaller --noconfirm --onefile --windowed --name $SetupName `
+        --version-file "build\version_info_setup.txt" `
         --icon "app.ico" `
         --add-data "build\installer_payload.zip;payload" `
         --add-data "build\app_version.txt;." `
